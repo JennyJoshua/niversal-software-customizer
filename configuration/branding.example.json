@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "brand": {
+    "product_name": "Example Product",
+    "publisher_name": "Example Publisher",
+    "tagline": "A customized product",
+    "website_url": "https://example.com",
+    "support_url": "https://example.com/support"
+  },
+  "visual": {
+    "primary_color": "#174A7E",
+    "secondary_color": "#F2A900",
+    "logo_path": "branding/logo.svg",
+    "favicon_path": "branding/favicon.ico"
+  },
+  "text_overrides": {},
+  "notes": "Example values only; adapters apply supported fields only."
+}
