@@ -221,7 +221,7 @@ def _asset_and_rights_hints(files: list[str]) -> dict[str, Any]:
         parts = {part.lower() for part in path.parts[:-1]}
         category = ASSET_EXTENSIONS.get(path.suffix.lower())
         if category is None:
-            category = next((ASSET_DIR_HINTS[p] for p in parts if p in ASSET_DIR_HINTS), None)
+            category = next((ASSET_DIR_HINTS[p] for p in sorted(parts) if p in ASSET_DIR_HINTS), None)
         if category:
             counts[category] = counts.get(category, 0) + 1
             if len(items) < 200:
