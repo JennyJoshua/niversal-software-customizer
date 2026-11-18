@@ -280,7 +280,10 @@ def create_sync_candidate(
         )
         _git(candidate, "checkout", "--no-track", "-b", branch_name, customized)
         merge_result = _git(
-            candidate, "merge", "--no-commit", "--no-ff", "--no-edit", target, check=False
+            candidate,
+            "-c", "user.name=USC Candidate",
+            "-c", "user.email=usc-candidate@invalid",
+            "merge", "--no-commit", "--no-ff", "--no-edit", target, check=False
         )
         if merge_result.returncode not in (0, 1):
             raise SyncPlanError(
