@@ -9,6 +9,7 @@ from pathlib import Path
 from .inspector import InspectionError, inspect_github_repository, inspect_repository
 from .licensing import LicenceScanError, scan_licence_evidence
 from .sync import SyncPlanError, create_sync_candidate, create_sync_plan
+from .verification import create_sync_verification
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -53,6 +54,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     candidate_parser.add_argument("--output", help="Write JSON candidate report outside both repositories.")
 
+    verify_parser = subparsers.add_parser(
+        "sync-verify", help="Validate external test evidence against an unchanged candidate tree."
+    )
+    verify_parser.add_argument("--candidate-report", required=True, help="JSON report emitted by sync-candidate.")
+    verify_parser.add_argument("--evidence", required=True, help="Reviewer-supplied JSON test evidence.")
+    verify_parser.add_argument("--output", help="Write verification report outside the candidate workspace.")
+
     return parser
 
 
@@ -92,7 +100,7 @@ def main(argv: list[str] | None = None) -> int:
             source_root = Path(args.path).expanduser().resolve()
             report = create_sync_plan(source_root, args.base_sha, args.target_sha)
             _write_report(report, args.output, source_root)
-        else:
+        elif args.command == "sync-candidate":
             source_root = Path(args.path).expanduser().resolve()
             candidate_path = Path(args.workspace).expanduser().resolve()
             if args.output:
@@ -106,8 +114,17 @@ def main(argv: list[str] | None = None) -> int:
                 approved=args.approve, rights_reviewed=args.rights_reviewed,
             )
             _write_report(report, args.output, source_root)
+        else:
+            report = create_sync_verification(args.candidate_report, args.evidence)
+            candidate_data = json.loads(Path(args.candidate_report).expanduser().read_text(encoding="utf-8"))
+            candidate_path = Path(candidate_data["candidate_path"]).expanduser().resolve()
+            if args.output:
+                output_path = Path(args.output).expanduser().resolve()
+                if output_path == candidate_path or candidate_path in output_path.parents:
+                    raise ValueError("Verification report output must be outside the candidate workspace.")
+            _write_report(report, args.output, candidate_path)
         return 0
-    except (InspectionError, LicenceScanError, SyncPlanError, ValueError) as exc:
+    except (InspectionError, LicenceScanError, SyncPlanError, ValueError, OSError, KeyError) as exc:
         print(f"usc: operation blocked: {exc}", file=sys.stderr)
         return 2
 
