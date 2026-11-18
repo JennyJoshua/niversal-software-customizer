@@ -286,7 +286,7 @@ def test_candidate_verification_rejects_changed_tree_and_failed_tests(tmp_path):
     evidence["test_results"][0]["passed"] = False
     evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
     with pytest.raises(SyncPlanError, match="has not passed"):
-        create_sync_verification(report_path, evidence)
+        create_sync_verification(report_path, evidence_path)
 
 
 def test_candidate_verification_requires_timezone_aware_timestamp(tmp_path):
