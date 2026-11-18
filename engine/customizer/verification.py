@@ -29,6 +29,8 @@ def create_sync_verification(
         raise SyncPlanError("The supplied report is not an upstream sync candidate report.")
     if candidate_report.get("status") != "candidate_ready_for_review":
         raise SyncPlanError("Only a conflict-free candidate can be verified.")
+    if candidate_report.get("integration_committed") is not False or candidate_report.get("original_repository_unchanged") is not True:
+        raise SyncPlanError("Candidate report does not prove the expected uncommitted, isolated candidate state.")
     candidate_value = candidate_report.get("candidate_path")
     if not isinstance(candidate_value, str) or not candidate_value.strip():
         raise SyncPlanError("Candidate report does not contain a valid candidate path.")
