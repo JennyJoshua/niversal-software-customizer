@@ -25,6 +25,12 @@ class SyncPlanError(ValueError):
 
 def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
+    for key in (
+        "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR",
+        "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT",
+    ):
+        env.pop(key, None)
     env.update({
         "GIT_CONFIG_NOSYSTEM": "1",
         "GIT_TERMINAL_PROMPT": "0",
@@ -34,7 +40,7 @@ def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProc
     })
     try:
         result = subprocess.run(
-            ["git", "-c", "core.hooksPath=/dev/null", "-c", "protocol.file.allow=never", *args],
+            ["git", "-c", f"core.hooksPath={os.devnull}", "-c", "protocol.file.allow=never", *args],
             cwd=repo,
             env=env,
             text=True,
@@ -132,6 +138,13 @@ def create_sync_plan(
             raise SyncPlanError(f"Base SHA is not an ancestor of {label}; a reliable three-way plan is unavailable.")
         if result.returncode != 0:
             raise SyncPlanError(f"Git could not verify the common base for {label}.")
+
+    actual_merge_base = _git(repo, "merge-base", head, target).stdout.strip().lower()
+    if actual_merge_base != base:
+        raise SyncPlanError(
+            "Recorded base SHA is not the exact merge base of the customized and upstream histories. "
+            "Update the imported baseline before planning another synchronization."
+        )
 
     upstream_changes = _changed_paths(repo, base, target)
     local_changes = _changed_paths(repo, base, head)
