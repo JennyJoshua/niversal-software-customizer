@@ -62,9 +62,9 @@ def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProc
 def _assert_no_custom_git_drivers(repo: Path) -> None:
     """Reject repository-local Git settings that could execute external commands."""
     unsafe_settings = (
-        (r"^merge\\..*\\.driver$", "custom merge drivers"),
-        (r"^filter\\..*\\.(clean|smudge|process)$", "external filter drivers"),
-        (r"^core\\.fsmonitor$", "external filesystem monitor"),
+        (r"^merge\..*\.driver$", "custom merge drivers"),
+        (r"^filter\..*\.(clean|smudge|process)$", "external filter drivers"),
+        (r"^core\.fsmonitor$", "external filesystem monitor"),
     )
     for pattern, label in unsafe_settings:
         result = _git(repo, "config", "--local", "--get-regexp", pattern, check=False)
