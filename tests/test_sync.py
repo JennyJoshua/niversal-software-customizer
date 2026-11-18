@@ -151,3 +151,64 @@ def test_external_filter_driver_is_rejected_before_status_check(tmp_path):
 
     with pytest.raises(SyncPlanError, match="external filter drivers"):
         create_sync_plan(repo, base, target)
+
+
+def test_candidate_integrates_clean_update_in_separate_clone_and_preserves_original(tmp_path):
+    from customizer.sync import create_sync_candidate
+
+    repo, base = init_repo(tmp_path)
+    target = commit_file(repo, "upstream.txt", "upstream update\n", "upstream change")
+    git(repo, "branch", "upstream/test", target)
+    git(repo, "reset", "--hard", base)
+    commit_file(repo, "custom.txt", "custom work\n", "custom change")
+    original_head = git(repo, "rev-parse", "HEAD")
+    workspace = tmp_path / "candidate"
+
+    result = create_sync_candidate(repo, base, target, workspace, approved=True)
+
+    assert result["status"] == "candidate_ready_for_review"
+    assert result["integration_committed"] is False
+    assert result["original_repository_unchanged"] is True
+    assert (workspace / "upstream.txt").read_text(encoding="utf-8") == "upstream update\n"
+    assert (workspace / "custom.txt").read_text(encoding="utf-8") == "custom work\n"
+    assert git(repo, "rev-parse", "HEAD") == original_head
+    assert not (repo / "upstream.txt").exists()
+    assert git(workspace, "rev-parse", "HEAD") == original_head
+
+
+def test_candidate_conflict_is_left_unresolved_in_candidate_only(tmp_path):
+    from customizer.sync import create_sync_candidate
+
+    repo, base = init_repo(tmp_path)
+    target = commit_file(repo, "base.txt", "upstream version\n", "upstream edit")
+    git(repo, "branch", "upstream/test", target)
+    git(repo, "reset", "--hard", base)
+    commit_file(repo, "base.txt", "custom version\n", "custom edit")
+    original_head = git(repo, "rev-parse", "HEAD")
+    workspace = tmp_path / "candidate"
+
+    result = create_sync_candidate(repo, base, target, workspace, approved=True)
+
+    assert result["status"] == "blocked"
+    assert result["merge_conflicts"] == ["base.txt"]
+    assert (workspace / "base.txt").exists()
+    assert git(repo, "rev-parse", "HEAD") == original_head
+    assert (repo / "base.txt").read_text(encoding="utf-8") == "custom version\n"
+
+
+def test_candidate_requires_approval_and_rights_review(tmp_path):
+    from customizer.sync import create_sync_candidate
+
+    repo, base = init_repo(tmp_path)
+    target = commit_file(repo, "LICENSE", "Updated terms\n", "upstream licence change")
+    git(repo, "branch", "upstream/test", target)
+    git(repo, "reset", "--hard", base)
+    workspace = tmp_path / "candidate"
+
+    with pytest.raises(SyncPlanError, match="explicit --approve"):
+        create_sync_candidate(repo, base, target, workspace)
+
+    with pytest.raises(SyncPlanError, match="human rights review"):
+        create_sync_candidate(repo, base, target, workspace, approved=True)
+
+    assert not workspace.exists()
