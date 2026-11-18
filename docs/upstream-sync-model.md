@@ -102,3 +102,28 @@ Missing baseline, shallow/incomplete history, unsupported Git state, unsafe path
 ## Delivery status
 
 Read-only planning and isolated, uncommitted candidate creation are implemented. Candidate verification, acceptance, recovery automation, and final provenance remain future work. Do not describe the full upstream update workflow as complete until those capabilities pass their tests.
+
+
+## Current implementation: candidate evidence validation
+
+The command is:
+
+```bash
+usc sync-verify --candidate-report ../candidate-report.json \
+  --evidence ../verification-evidence.json \
+  --output ../verification-report.json
+```
+
+The candidate report is emitted by `sync-candidate --output ../candidate-report.json`. Before verification, review the full candidate diff and run approved tests/builds in a disposable, unprivileged environment without production secrets. The evidence JSON must identify:
+- The exact candidate index tree SHA (from `git -C ../candidate write-tree`).
+- A passed verification status and at least one passing test result with a log/report/CI evidence reference.
+- Reviewer identity and an ISO-8601 timestamp with an explicit timezone.
+- The rights-review acknowledgement matching the candidate report.
+
+The verifier re-checks candidate branch, original customized HEAD, upstream MERGE_HEAD, unresolved conflicts, unstaged/untracked changes, and exact tree SHA. Stale or modified candidates and failed test evidence are blocked. It never runs source scripts or tests.
+
+**Trust limitation:** evidence is reviewer-supplied JSON. The verifier checks its structure and binds it to the candidate tree, but does not independently authenticate the CI provider, log URLs, reviewer identity, or test execution. The report explicitly sets `evidence_authenticated=false`. A trusted CI evidence policy is still required before automatic acceptance.
+
+## Acceptance remains outstanding
+
+A `verification_passed` report does not change the original customized repository. The next batch must add explicit acceptance with compare-and-swap protection against an original HEAD change, ensure the candidate still matches the verified tree, commit the merge with the customized commit as first parent and upstream target as second parent, advance the upstream baseline only after success, and write complete provenance. Failure must leave the original customized ref and baseline unchanged.
