@@ -39,23 +39,39 @@ Supported dependency metadata currently includes npm `package.json`, Composer `c
 - Dependencies, assets, fonts, icons, datasets, documentation, and trademarks require separate review.
 - Every report is emitted with `review_status=human_review_required`, `legal_approval=false`, and `customization_gate=blocked`. No command in this phase can mark a project approved.
 
-## Required upstream update workflow (planned)
+## Create a read-only upstream sync plan
 
-1. Record the upstream repository URL and exact commit SHA last imported into the customized product.
-2. Fetch the selected newer upstream revision into a disposable workspace; never update the customized working tree in place.
-3. Generate a read-only three-way plan using the previous imported upstream SHA as base, the new upstream SHA as upstream, and the customized tree as the local side.
-4. Review incoming changes, local custom changes, affected paths, deletions/renames, and conflicts.
-5. Stop on conflicts, ambiguous path mapping, missing history/baseline, or unsupported repository state. Never auto-resolve or choose blanket ours/theirs strategies.
-6. After rights review and explicit approval, create a candidate integration in a separate recoverable worktree/branch.
-7. Run relevant tests and inspect the complete diff. Keep the original customized ref unchanged until candidate verification succeeds.
-8. Record old/new upstream SHAs, customization revision, changed paths, conflict decisions, test results, and resulting commit in provenance.
+First fetch the relevant upstream history into the local Git repository using your normal Git client. Do not fetch untrusted submodules or run project scripts as part of this step. Identify:
+- The exact upstream commit SHA last imported into the customized product (base).
+- The exact newer upstream commit SHA to evaluate (target).
+- The current customized commit (the checked-out HEAD).
 
-This workflow is a specification, not a claim that the sync engine is already implemented. The current release only provides inspection and rights-evidence capabilities.
+Then run:
+
+```bash
+usc sync-plan --path ./customized-repository \
+  --base-sha <last-imported-upstream-sha> \
+  --target-sha <new-upstream-sha> \
+  --output ../upstream-sync-plan.json
+```
+
+The output path must be outside the repository. The planner requires:
+- A non-bare Git working repository with complete (not shallow) history.
+- Full 40- or 64-character commit SHAs.
+- The base commit to be an ancestor of both the customized HEAD and upstream target.
+- A clean customized working tree, including no untracked files.
+
+The plan classifies upstream-only, local-only, and overlapping changed paths; performs Git's non-mutating three-way merge preflight; reports conflicts; and flags changes to common licence/notice filenames for renewed human rights review.
+
+A result of `ready_for_review` means only that Git's merge preflight found no conflicts. It does not merge, write source files, update refs, approve rights, run tests, or authorize distribution. `blocked` means do not integrate automatically. The original working tree and refs remain unchanged by planning.
+
+## Candidate integration (not yet implemented)
+
+After a clean plan, rights review, and explicit approval, a future command will create a candidate integration in a disposable/recoverable workspace. It must preserve the original customized ref, stop on conflicts, run approved verification in isolation, and record provenance. Do not treat the current sync planner as an integration tool.
 
 ## Safety and limitations
 
-- Inspection and rights scanning are read-only and do not execute application code, scripts, installers, or builds.
-- Common generated/dependency directories and symlinks are excluded.
-- Evidence collection is bounded by file-count and file-size limits.
-- A human reviewer must confirm the exact licence terms, intended use, obligations, compatibility, and third-party rights before customization or distribution.
-- Upstream synchronization must run in disposable/recoverable workspaces and must not silently discard custom work.
+- Inspection, rights scanning, and sync planning are read-only and do not execute application code, scripts, installers, hooks, or builds.
+- The sync planner uses local Git objects; it does not fetch remote updates itself.
+- A human reviewer must confirm exact licence terms, intended use, obligations, compatibility, and third-party rights before customization or distribution.
+- Upstream synchronization must never silently discard custom work.

@@ -1,4 +1,4 @@
-"""Command-line entry point for safe, read-only source inspection."""
+"""Command-line entry point for safe repository inspection and sync planning."""
 from __future__ import annotations
 
 import argparse
@@ -8,12 +8,13 @@ from pathlib import Path
 
 from .inspector import InspectionError, inspect_github_repository, inspect_repository
 from .licensing import LicenceScanError, scan_licence_evidence
+from .sync import SyncPlanError, create_sync_plan
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="usc",
-        description="Inspect source repositories and collect rights evidence without executing their code.",
+        description="Inspect source repositories and plan safe upstream synchronization without executing source code.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -29,6 +30,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     licence_parser.add_argument("--path", required=True, help="Existing local source directory.")
     licence_parser.add_argument("--output", help="Write JSON report to this path instead of stdout.")
+
+    sync_parser = subparsers.add_parser(
+        "sync-plan", help="Create a read-only three-way upstream synchronization plan."
+    )
+    sync_parser.add_argument("--path", required=True, help="Customized Git working repository.")
+    sync_parser.add_argument("--base-sha", required=True, help="Full SHA of the last imported upstream baseline.")
+    sync_parser.add_argument("--target-sha", required=True, help="Full SHA of the selected newer upstream commit.")
+    sync_parser.add_argument("--output", help="Write JSON plan outside the repository.")
+
     return parser
 
 
@@ -38,6 +48,7 @@ def _write_report(report: dict, output: str | None, source_root: Path | None = N
         output_path = Path(output).expanduser().resolve()
         if source_root is not None and (output_path == source_root or source_root in output_path.parents):
             raise ValueError("Report output must be outside the inspected source directory.")
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(rendered, encoding="utf-8")
     else:
         sys.stdout.write(rendered)
@@ -59,12 +70,16 @@ def main(argv: list[str] | None = None) -> int:
                 source_root = Path(args.path).expanduser().resolve()
                 report = inspect_repository(source_root)
                 _write_report(report, args.output, source_root)
-        else:
+        elif args.command == "licences":
             source_root = Path(args.path).expanduser().resolve()
             report = scan_licence_evidence(source_root)
             _write_report(report, args.output, source_root)
+        else:
+            source_root = Path(args.path).expanduser().resolve()
+            report = create_sync_plan(source_root, args.base_sha, args.target_sha)
+            _write_report(report, args.output, source_root)
         return 0
-    except (InspectionError, LicenceScanError, ValueError) as exc:
+    except (InspectionError, LicenceScanError, SyncPlanError, ValueError) as exc:
         print(f"usc: operation blocked: {exc}", file=sys.stderr)
         return 2
 

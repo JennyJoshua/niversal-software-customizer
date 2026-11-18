@@ -6,16 +6,20 @@
 - [x] Python project skeleton, CLI, tests, and GitHub Actions CI established.
 - [x] Static source inspector implemented and merged (PR #4).
 - [x] Licence and third-party rights evidence scanner implemented and merged (PR #5).
+- [x] Safe upstream synchronization requirements and architecture specified (PR #7).
+- [x] Read-only, baseline-aware upstream sync planner implemented in feature branch; merge pending CI/review.
 
-## Phase 3 — Safe upstream synchronization specification and engine
+## Phase 3 — Safe upstream synchronization
 
-- [ ] Record upstream source identity and last-imported baseline SHA.
-- [ ] Define the three-way model: prior upstream baseline, selected upstream target, customized tree.
-- [ ] Produce deterministic, read-only sync plans with path-level change classifications.
-- [ ] Detect overlapping edits, conflicts, renames/deletions, missing baselines, and unsupported states.
-- [ ] Integrate only in a disposable/recoverable working copy after rights and approval gates.
-- [ ] Preserve the original customized ref and emit a complete sync/provenance report.
-- [ ] Test clean upstream updates, local-only custom changes, overlapping conflicts, deletion/rename cases, and rollback safety.
+- [x] Require full base and target commit SHAs.
+- [x] Reject shallow history, dirty working trees, and invalid/non-ancestor baselines.
+- [x] Produce deterministic path-level upstream/local change classifications.
+- [x] Run a non-mutating Git three-way merge preflight and block conflicts.
+- [x] Flag common licence/notice file changes for human rights review.
+- [ ] Candidate integration in a disposable/recoverable working copy.
+- [ ] Preserve original customized ref and support candidate discard/recovery.
+- [ ] Verify candidate tests and produce full sync/provenance record.
+- [ ] Test deletion/rename edge cases and failed candidate verification.
 
 ## Phase 4 — Configuration and branding planning
 

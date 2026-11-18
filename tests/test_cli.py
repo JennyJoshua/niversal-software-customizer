@@ -53,3 +53,75 @@ def test_licences_cli_rejects_report_inside_source(tmp_path, capsys):
     output = tmp_path / "rights-review.json"
     assert main(["licences", "--path", str(tmp_path), "--output", str(output)]) == 2
     assert "outside the inspected source directory" in capsys.readouterr().err
+
+
+def test_sync_plan_cli_emits_read_only_plan(tmp_path, capsys):
+    import subprocess
+
+    from customizer.cli import main
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git(*args):
+        return subprocess.run(
+            ["git", *args], cwd=repo, check=True, text=True, capture_output=True
+        ).stdout.strip()
+
+    git("init", "-q")
+    git("config", "user.email", "tests@example.invalid")
+    git("config", "user.name", "USC tests")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-qm", "base")
+    base = git("rev-parse", "HEAD")
+    (repo / "upstream.txt").write_text("upstream\n", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-qm", "upstream")
+    target = git("rev-parse", "HEAD")
+    git("reset", "--hard", base)
+    (repo / "custom.txt").write_text("custom\n", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-qm", "custom")
+    customized = git("rev-parse", "HEAD")
+
+    output = tmp_path / "plan.json"
+    assert main([
+        "sync-plan", "--path", str(repo),
+        "--base-sha", base, "--target-sha", target,
+        "--output", str(output),
+    ]) == 0
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["status"] == "ready_for_review"
+    assert report["integration_performed"] is False
+    assert git("rev-parse", "HEAD") == customized
+    assert not (repo / "upstream.txt").exists()
+
+
+def test_sync_plan_cli_rejects_output_inside_repository(tmp_path, capsys):
+    import subprocess
+
+    from customizer.cli import main
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git(*args):
+        return subprocess.run(
+            ["git", *args], cwd=repo, check=True, text=True, capture_output=True
+        ).stdout.strip()
+
+    git("init", "-q")
+    git("config", "user.email", "tests@example.invalid")
+    git("config", "user.name", "USC tests")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-qm", "base")
+    base = git("rev-parse", "HEAD")
+
+    assert main([
+        "sync-plan", "--path", str(repo),
+        "--base-sha", base, "--target-sha", base,
+        "--output", str(repo / "plan.json"),
+    ]) == 2
+    assert "outside the inspected source directory" in capsys.readouterr().err
