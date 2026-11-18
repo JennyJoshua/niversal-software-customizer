@@ -131,3 +131,23 @@ def test_shallow_repository_is_rejected(tmp_path):
 
     with pytest.raises(SyncPlanError, match="Shallow history"):
         create_sync_plan(repo, base, target)
+
+
+def test_custom_merge_driver_is_rejected_before_merge_preflight(tmp_path):
+    repo, base = init_repo(tmp_path)
+    target = commit_file(repo, "upstream.txt", "upstream\n", "upstream")
+    git(repo, "reset", "--hard", base)
+    git(repo, "config", "--local", "merge.custom.driver", "touch /tmp/usc-merge-driver-should-not-run")
+
+    with pytest.raises(SyncPlanError, match="custom merge drivers"):
+        create_sync_plan(repo, base, target)
+
+
+def test_external_filter_driver_is_rejected_before_status_check(tmp_path):
+    repo, base = init_repo(tmp_path)
+    target = commit_file(repo, "upstream.txt", "upstream\n", "upstream")
+    git(repo, "reset", "--hard", base)
+    git(repo, "config", "--local", "filter.custom.clean", "touch /tmp/usc-filter-driver-should-not-run")
+
+    with pytest.raises(SyncPlanError, match="external filter drivers"):
+        create_sync_plan(repo, base, target)
