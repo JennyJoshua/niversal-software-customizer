@@ -29,7 +29,7 @@ Inspection, rights scanning, and sync planning do not execute project code. The 
 
 A clean sync plan is only **ready for review**; it is not an integration approval or guarantee that all semantic interactions are safe. Conflicts block the plan. The planner never changes the working tree or refs.
 
-Candidate creation requires explicit `--approve`, and `--rights-reviewed` when common licence/notice files changed. It creates a full, separate clone and leaves the merge uncommitted for review. The original customized repository is not changed. Conflicts remain unresolved in the candidate and must be handled manually or the candidate discarded. Candidate creation does not run project tests/builds, commit changes, update the upstream baseline, or authorize distribution.
+Candidate creation requires explicit `--approve`, and `--rights-reviewed` when common licence/notice files changed. It creates a full, separate clone and leaves the merge uncommitted for review. The original customized repository is not changed. If preflight detects conflicts, candidate creation is blocked before a clone is made. If an unexpected conflict occurs during candidate merge, the candidate remains unresolved for manual review or discard. Candidate creation does not run project tests/builds, commit changes, update the upstream baseline, or authorize distribution.
 
 The rights report inventories root and nested evidence, extracts supported dependency declarations, and highlights asset and trademark review areas. It does not execute project code or determine legal permission. Every rights report remains human-review-required and blocks customization.
 
