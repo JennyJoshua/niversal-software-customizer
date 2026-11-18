@@ -84,7 +84,8 @@ The command requires the customized HEAD and target commit to be reachable from 
 
 Possible outcomes:
 - `candidate_ready_for_review`: Git completed the merge without conflicts. Inspect the candidate diff and run only approved tests in an isolated environment.
-- `blocked`: conflicts remain in the candidate. Do not accept it automatically; resolve manually or discard the candidate.
+- `blocked`: the sync plan found conflicts and candidate creation stops before creating a clone. Resolve the conflicts manually on a separate copy, then generate a fresh plan.
+- An unexpected conflict during candidate merge is left unresolved in the candidate workspace and must be handled manually or discarded.
 
 The candidate is deliberately left uncommitted. This command does not run source scripts, tests, builds, update the original repository, advance the imported baseline, or publish anything. The candidate folder is yours to inspect, retain, or delete.
 
