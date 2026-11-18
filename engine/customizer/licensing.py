@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import tomllib
 from pathlib import Path
@@ -15,10 +16,6 @@ from .inspector import IGNORED_DIRS, MAX_FILES, MAX_MANIFEST_BYTES
 
 MAX_EVIDENCE_BYTES = 2_000_000
 MAX_DEPENDENCIES = 1000
-EVIDENCE_PREFIXES = (
-    "license", "licence", "copying", "notice", "authors",
-    "copyright", "attribution", "third-party-notices",
-)
 ASSET_EXTENSIONS = {
     ".png": "image", ".jpg": "image", ".jpeg": "image", ".gif": "image",
     ".svg": "image_or_icon", ".webp": "image", ".ico": "image",
@@ -41,10 +38,10 @@ class LicenceScanError(ValueError):
 def _safe_files(root: Path) -> tuple[list[str], bool]:
     found: list[str] = []
     truncated = False
-    for current, dirs, names in __import__("os").walk(root, followlinks=False):
+    for current, dirs, names in os.walk(root, followlinks=False):
         dirs[:] = sorted(
             name for name in dirs
-            if name not in IGNORED_DIRS and not (Path(current) / name).is_symlink()
+            if name not in (IGNORED_DIRS - {"vendor"}) and not (Path(current) / name).is_symlink()
         )
         for name in sorted(names):
             path = Path(current) / name
@@ -284,7 +281,8 @@ def scan_licence_evidence(source: str | Path) -> dict[str, Any]:
             "requirements.txt", "go.mod",
         }
     ]
-    declarations = _declared_project_licences(root, manifests)
+    root_manifests = [item for item in manifests if "/" not in item]
+    declarations = _declared_project_licences(root, root_manifests)
     declared_values = sorted(set(item["expression"] for item in declarations))
     spdx_values = sorted(set(
         identifier for item in root_licences for identifier in item["spdx_identifiers"]
