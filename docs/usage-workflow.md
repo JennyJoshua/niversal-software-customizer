@@ -75,7 +75,8 @@ usc sync-candidate --path ./customized-repository \
   --base-sha <last-imported-upstream-sha> \
   --target-sha <new-upstream-sha> \
   --workspace ../upstream-candidate \
-  --approve
+  --approve \\
+  --output ../candidate-report.json
 ```
 
 If the plan flags changed licence/notice files, complete the human review first and also pass `--rights-reviewed`. This flag records the user's acknowledgement; it is not legal advice or automated licence clearance.
