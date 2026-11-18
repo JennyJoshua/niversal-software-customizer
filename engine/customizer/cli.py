@@ -32,11 +32,11 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _write_report(report: dict, output: str | None, source_root: Path) -> None:
-    rendered = json.dumps(report, indent=2, sort_keys=True) + "\\n"
+def _write_report(report: dict, output: str | None, source_root: Path | None = None) -> None:
+    rendered = json.dumps(report, indent=2, sort_keys=True) + "\n"
     if output:
         output_path = Path(output).expanduser().resolve()
-        if output_path == source_root or source_root in output_path.parents:
+        if source_root is not None and (output_path == source_root or source_root in output_path.parents):
             raise ValueError("Report output must be outside the inspected source directory.")
         output_path.write_text(rendered, encoding="utf-8")
     else:
@@ -47,19 +47,20 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
-        source_root = Path(args.path).expanduser().resolve()
         if args.command == "inspect":
             if args.repo_url:
                 if not args.revision:
                     parser.error("--revision is required when using --repo-url.")
                 report = inspect_github_repository(args.repo_url, args.revision)
-                _write_report(report, args.output, source_root)
+                _write_report(report, args.output)
             else:
                 if args.revision:
                     parser.error("--revision can only be used with --repo-url.")
+                source_root = Path(args.path).expanduser().resolve()
                 report = inspect_repository(source_root)
                 _write_report(report, args.output, source_root)
         else:
+            source_root = Path(args.path).expanduser().resolve()
             report = scan_licence_evidence(source_root)
             _write_report(report, args.output, source_root)
         return 0
