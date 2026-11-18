@@ -78,8 +78,18 @@ def _validate_github_url(url: str) -> str:
 def clone_pinned_repository(url: str, revision: str, destination: Path) -> str:
     """Fetch and checkout a requested revision without running repository scripts."""
     safe_url = _validate_github_url(url)
-    if not revision or revision.startswith("-") or len(revision) > 200 or not re.fullmatch(r"[A-Za-z0-9._/-]+", revision):
-        raise InspectionError("Revision must be a branch, tag, or commit identifier without option-like syntax.")
+    revision_parts = revision.split("/") if isinstance(revision, str) else []
+    if (
+        not revision
+        or revision.startswith("-")
+        or revision.startswith("/")
+        or revision.endswith("/")
+        or "//" in revision
+        or any(part in {".", ".."} for part in revision_parts)
+        or len(revision) > 200
+        or not re.fullmatch(r"[A-Za-z0-9._/-]+", revision)
+    ):
+        raise InspectionError("Revision must be a valid branch, tag, or commit identifier without option-like syntax or path traversal.")
     _run_git(["-c", "core.hooksPath=/dev/null", "clone", "--no-checkout",
               "--no-recurse-submodules", "--filter=blob:none", safe_url, str(destination)], timeout=180)
     _run_git(["-c", "core.hooksPath=/dev/null", "fetch", "--depth=1", "origin", revision],
