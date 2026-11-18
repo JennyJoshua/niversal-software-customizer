@@ -7,48 +7,65 @@ import sys
 from pathlib import Path
 
 from .inspector import InspectionError, inspect_github_repository, inspect_repository
+from .licensing import LicenceScanError, scan_licence_evidence
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="usc",
-        description="Inspect source repositories without executing or modifying their code.",
+        description="Inspect source repositories and collect rights evidence without executing their code.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
+
     inspect_parser = subparsers.add_parser("inspect", help="Create a static repository inspection report.")
     source = inspect_parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--path", help="Existing local source directory.")
     source.add_argument("--repo-url", help="Public HTTPS GitHub repository URL.")
     inspect_parser.add_argument("--revision", help="Required with --repo-url: branch, tag, or commit to inspect.")
     inspect_parser.add_argument("--output", help="Write JSON report to this path instead of stdout.")
+
+    licence_parser = subparsers.add_parser(
+        "licences", help="Collect project, dependency, asset, and attribution evidence for human review."
+    )
+    licence_parser.add_argument("--path", required=True, help="Existing local source directory.")
+    licence_parser.add_argument("--output", help="Write JSON report to this path instead of stdout.")
     return parser
+
+
+def _write_report(report: dict, output: str | None, source_root: Path | None = None) -> None:
+    rendered = json.dumps(report, indent=2, sort_keys=True) + "\n"
+    if output:
+        output_path = Path(output).expanduser().resolve()
+        if source_root is not None and (output_path == source_root or source_root in output_path.parents):
+            raise ValueError("Report output must be outside the inspected source directory.")
+        output_path.write_text(rendered, encoding="utf-8")
+    else:
+        sys.stdout.write(rendered)
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
-        if args.repo_url:
-            if not args.revision:
-                parser.error("--revision is required when using --repo-url.")
-            report = inspect_github_repository(args.repo_url, args.revision)
+        if args.command == "inspect":
+            if args.repo_url:
+                if not args.revision:
+                    parser.error("--revision is required when using --repo-url.")
+                report = inspect_github_repository(args.repo_url, args.revision)
+                _write_report(report, args.output)
+            else:
+                if args.revision:
+                    parser.error("--revision can only be used with --repo-url.")
+                source_root = Path(args.path).expanduser().resolve()
+                report = inspect_repository(source_root)
+                _write_report(report, args.output, source_root)
         else:
-            if args.revision:
-                parser.error("--revision can only be used with --repo-url.")
             source_root = Path(args.path).expanduser().resolve()
-            report = inspect_repository(source_root)
-            if args.output:
-                output_path = Path(args.output).expanduser().resolve()
-                if output_path == source_root or source_root in output_path.parents:
-                    raise InspectionError("Report output must be outside the inspected source directory.")
-        rendered = json.dumps(report, indent=2, sort_keys=True) + "\n"
-        if args.output:
-            Path(args.output).expanduser().write_text(rendered, encoding="utf-8")
-        else:
-            sys.stdout.write(rendered)
+            report = scan_licence_evidence(source_root)
+            _write_report(report, args.output, source_root)
         return 0
-    except InspectionError as exc:
-        print(f"usc: inspection blocked: {exc}", file=sys.stderr)
+    except (InspectionError, LicenceScanError, ValueError) as exc:
+        print(f"usc: operation blocked: {exc}", file=sys.stderr)
         return 2
 
 

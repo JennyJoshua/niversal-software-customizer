@@ -1,17 +1,27 @@
 # Licensing and Attribution
 
-This guide is operational guidance, not legal advice.
+This guide is operational guidance, not legal advice. The automated report collects evidence only and must never be treated as legal approval.
+
+## Run the evidence scanner
+
+```bash
+usc licences --path ./source-project --output rights-review.json
+```
+
+The report records root and nested licence, notice, authorship, copyright, and attribution files, including content hashes and SPDX identifiers where present. It extracts project licence declarations and dependency names/version constraints from supported npm, Composer, Python, Cargo, and Go manifests. It also flags likely asset, font, icon, image, dataset, logo, and trademark review areas.
+
+The scanner does not resolve dependency licences, determine licence compatibility, inspect every binary asset's provenance, or make legal conclusions. Installed dependency directories are excluded from traversal; lockfiles and package registries are not resolved in this phase.
 
 ## Before adapting a project
 
 1. Identify the exact upstream repository and pinned commit.
-2. Find root and nested licence files.
+2. Find root and nested licence files. A nested licence may apply only to its own component and does not replace the root project's licence.
 3. Inspect copyright, NOTICE, AUTHORS, and attribution files.
-4. Review dependency manifests and lockfiles.
-5. Check whether assets, fonts, icons, datasets, and documentation have separate terms.
+4. Review dependency manifests and lockfiles, then verify each dependency's exact version and licence independently.
+5. Check whether assets, fonts, icons, datasets, documentation, and other materials have separate terms.
 6. Check trademark restrictions independently of copyright licensing.
 7. Record intended use: private modification, internal deployment, redistribution, or commercial distribution.
-8. Obtain human review if evidence is missing, ambiguous, or conflicting.
+8. Obtain human review if evidence is missing, ambiguous, conflicting, or incomplete.
 
 ## Important distinctions
 
@@ -35,4 +45,4 @@ This guide is operational guidance, not legal advice.
 
 Record repository URL and commit; detected licence files; dependency and asset licence evidence; intended modification/distribution; obligations; unresolved questions; reviewer and date; and decision (approved, blocked, or needs legal advice).
 
-The tool may collect evidence and flag risks. It must not label a project legally approved on its own.
+The tool emits a pending human-review record and always sets `legal_approval=false` and `customization_gate=blocked`. It cannot approve a project. A human reviewer must confirm the exact licence terms, scope, third-party rights, intended use, and obligations before customization or distribution.
