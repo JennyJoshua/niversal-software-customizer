@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "project_id": "sample-web-product",
+  "source": {
+    "repository_url": "https://github.com/example/example-web-app",
+    "revision": "REPLACE_WITH_TAG_OR_COMMIT_SHA"
+  },
+  "adapter": "web",
+  "licence_review": {
+    "status": "not_reviewed",
+    "review_record": null
+  }
+}
