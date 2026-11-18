@@ -61,3 +61,40 @@ def test_accepts_public_github_url():
 def test_missing_directory_fails(tmp_path: Path):
     with pytest.raises(InspectionError):
         inspect_repository(tmp_path / "missing")
+
+
+def test_empty_directory_is_unsupported(tmp_path: Path):
+    report = inspect_repository(tmp_path)
+    assert report["result"] == "unsupported"
+    assert report["inventory"]["file_count"] == 0
+
+
+@pytest.mark.parametrize("revision", ["", "-upload-pack=evil", "../main", "main;echo-bad", "x" * 201])
+def test_rejects_unsafe_revision_before_git_call(monkeypatch, tmp_path: Path, revision: str):
+    import customizer.inspector as inspector
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("Git must not be called for an invalid revision")
+
+    monkeypatch.setattr(inspector, "_run_git", fail_if_called)
+    with pytest.raises(InspectionError):
+        inspector.clone_pinned_repository(
+            "https://github.com/example/project",
+            revision,
+            tmp_path / "checkout",
+        )
+
+
+def test_local_inspection_does_not_follow_symlink_directories(tmp_path: Path):
+    outside = tmp_path.parent / "usc-outside-fixture"
+    outside.mkdir(exist_ok=True)
+    (outside / "package.json").write_text('{"dependencies":{"react":"18"}}', encoding="utf-8")
+    link = tmp_path / "linked"
+    try:
+        link.symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("Symlinks are not supported in this environment")
+
+    report = inspect_repository(tmp_path)
+    assert report["result"] == "unsupported"
+    assert "linked/package.json" not in report["inventory"]["files"]
