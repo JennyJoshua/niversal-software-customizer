@@ -176,7 +176,7 @@ def test_candidate_integrates_clean_update_in_separate_clone_and_preserves_origi
     assert git(workspace, "rev-parse", "HEAD") == original_head
 
 
-def test_candidate_conflict_is_left_unresolved_in_candidate_only(tmp_path):
+def test_candidate_creation_is_blocked_when_sync_plan_has_conflicts(tmp_path):
     from customizer.sync import create_sync_candidate
 
     repo, base = init_repo(tmp_path)
@@ -187,11 +187,10 @@ def test_candidate_conflict_is_left_unresolved_in_candidate_only(tmp_path):
     original_head = git(repo, "rev-parse", "HEAD")
     workspace = tmp_path / "candidate"
 
-    result = create_sync_candidate(repo, base, target, workspace, approved=True)
+    with pytest.raises(SyncPlanError, match="plan is blocked by conflicts"):
+        create_sync_candidate(repo, base, target, workspace, approved=True)
 
-    assert result["status"] == "blocked"
-    assert result["merge_conflicts"] == ["base.txt"]
-    assert (workspace / "base.txt").exists()
+    assert not workspace.exists()
     assert git(repo, "rev-parse", "HEAD") == original_head
     assert (repo / "base.txt").read_text(encoding="utf-8") == "custom version\n"
 
