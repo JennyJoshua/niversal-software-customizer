@@ -10,7 +10,7 @@ This is not a universal source-code converter, reverse-engineering tool, or meth
 
 ## Current status
 
-**Foundation + static inspection + rights-evidence reporting + read-only upstream sync planning.** The tool can inspect source repositories, collect project/dependency rights evidence, and compare a customized Git working copy with a newer upstream commit using a read-only three-way merge preflight. Candidate integration, branding transformations, and production adapters are not yet implemented.
+**Foundation + static inspection + rights-evidence reporting + read-only upstream planning + isolated candidate integration.** The tool can inspect source repositories, collect project/dependency rights evidence, plan a three-way upstream update, and create an uncommitted candidate merge in a separate clone. Candidate verification, acceptance, provenance finalization, branding transformations, and production adapters are not yet implemented.
 
 ## First capabilities
 
@@ -22,11 +22,14 @@ usc inspect --path ./source-project
 usc inspect --repo-url https://github.com/OWNER/REPOSITORY --revision v1.2.3
 usc licences --path ./source-project --output rights-review.json
 usc sync-plan --path ./customized-repository --base-sha <last-imported-upstream-sha> --target-sha <new-upstream-sha>
+usc sync-candidate --path ./customized-repository --base-sha <last-imported-upstream-sha> --target-sha <new-upstream-sha> --workspace ../upstream-candidate --approve
 ```
 
-Inspection, rights scanning, and sync planning do not execute project code. The sync planner requires a complete local Git history, a clean working tree, and a recorded base commit that is an ancestor of both the customized commit and selected upstream target. Fetching is a separate user-controlled step.
+Inspection, rights scanning, and sync planning do not execute project code. The sync planner requires a complete local Git history, a clean working tree, and a recorded base commit that is the exact merge base of the customized branch and selected upstream target. Fetching is a separate user-controlled step.
 
-A clean sync plan is only **ready for review**; it is not an integration, approval, or guarantee that all semantic interactions are safe. Conflicts block the plan. The planner never changes the working tree or refs.
+A clean sync plan is only **ready for review**; it is not an integration approval or guarantee that all semantic interactions are safe. Conflicts block the plan. The planner never changes the working tree or refs.
+
+Candidate creation requires explicit `--approve`, and `--rights-reviewed` when common licence/notice files changed. It creates a full, separate clone and leaves the merge uncommitted for review. The original customized repository is not changed. Conflicts remain unresolved in the candidate and must be handled manually or the candidate discarded. Candidate creation does not run project tests/builds, commit changes, update the upstream baseline, or authorize distribution.
 
 The rights report inventories root and nested evidence, extracts supported dependency declarations, and highlights asset and trademark review areas. It does not execute project code or determine legal permission. Every rights report remains human-review-required and blocks customization.
 
