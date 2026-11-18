@@ -125,3 +125,56 @@ def test_sync_plan_cli_rejects_output_inside_repository(tmp_path, capsys):
         "--output", str(repo / "plan.json"),
     ]) == 2
     assert "outside the inspected source directory" in capsys.readouterr().err
+
+
+def test_sync_candidate_cli_requires_approval_and_writes_report(tmp_path, capsys):
+    import subprocess
+
+    from customizer.cli import main
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git(*args):
+        return subprocess.run(
+            ["git", *args], cwd=repo, check=True, text=True, capture_output=True
+        ).stdout.strip()
+
+    git("init", "-q")
+    git("config", "user.email", "tests@example.invalid")
+    git("config", "user.name", "USC tests")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-qm", "base")
+    base = git("rev-parse", "HEAD")
+    (repo / "upstream.txt").write_text("upstream\n", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-qm", "upstream")
+    target = git("rev-parse", "HEAD")
+    git("branch", "upstream/test", target)
+    git("reset", "--hard", base)
+    (repo / "custom.txt").write_text("custom\n", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-qm", "custom")
+    original_head = git("rev-parse", "HEAD")
+
+    workspace = tmp_path / "candidate"
+    assert main([
+        "sync-candidate", "--path", str(repo),
+        "--base-sha", base, "--target-sha", target,
+        "--workspace", str(workspace),
+    ]) == 2
+    assert "explicit --approve" in capsys.readouterr().err
+    assert not workspace.exists()
+
+    output = tmp_path / "candidate-report.json"
+    assert main([
+        "sync-candidate", "--path", str(repo),
+        "--base-sha", base, "--target-sha", target,
+        "--workspace", str(workspace), "--approve",
+        "--output", str(output),
+    ]) == 0
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["status"] == "candidate_ready_for_review"
+    assert report["integration_committed"] is False
+    assert git("rev-parse", "HEAD") == original_head
