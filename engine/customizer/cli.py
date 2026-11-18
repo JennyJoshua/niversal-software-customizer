@@ -94,15 +94,17 @@ def main(argv: list[str] | None = None) -> int:
             _write_report(report, args.output, source_root)
         else:
             source_root = Path(args.path).expanduser().resolve()
+            candidate_path = Path(args.workspace).expanduser().resolve()
+            if args.output:
+                output_path = Path(args.output).expanduser().resolve()
+                if output_path == source_root or source_root in output_path.parents:
+                    raise ValueError("Report output must be outside the inspected source directory.")
+                if output_path == candidate_path or candidate_path in output_path.parents:
+                    raise ValueError("Candidate report output must be outside the candidate workspace.")
             report = create_sync_candidate(
                 source_root, args.base_sha, args.target_sha, args.workspace,
                 approved=args.approve, rights_reviewed=args.rights_reviewed,
             )
-            if args.output:
-                output_path = Path(args.output).expanduser().resolve()
-                candidate_path = Path(report["candidate_path"]).resolve()
-                if output_path == candidate_path or candidate_path in output_path.parents:
-                    raise ValueError("Candidate report output must be outside the candidate workspace.")
             _write_report(report, args.output, source_root)
         return 0
     except (InspectionError, LicenceScanError, SyncPlanError, ValueError) as exc:
