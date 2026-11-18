@@ -58,20 +58,44 @@ usc sync-plan --path ./customized-repository \
 The output path must be outside the repository. The planner requires:
 - A non-bare Git working repository with complete (not shallow) history.
 - Full 40- or 64-character commit SHAs.
-- The base commit to be an ancestor of both the customized HEAD and upstream target.
+- The base commit to be the exact merge base of the customized HEAD and upstream target.
 - A clean customized working tree, including no untracked files.
+- No repository-local custom merge/filter drivers or external filesystem monitor.
 
 The plan classifies upstream-only, local-only, and overlapping changed paths; performs Git's non-mutating three-way merge preflight; reports conflicts; and flags changes to common licence/notice filenames for renewed human rights review.
 
 A result of `ready_for_review` means only that Git's merge preflight found no conflicts. It does not merge, write source files, update refs, approve rights, run tests, or authorize distribution. `blocked` means do not integrate automatically. The original working tree and refs remain unchanged by planning.
 
-## Candidate integration (not yet implemented)
+## Create an isolated candidate integration
 
-After a clean plan, rights review, and explicit approval, a future command will create a candidate integration in a disposable/recoverable workspace. It must preserve the original customized ref, stop on conflicts, run approved verification in isolation, and record provenance. Do not treat the current sync planner as an integration tool.
+Only after reviewing a clean plan, rights evidence, and the proposed upstream changes, create a candidate:
+
+```bash
+usc sync-candidate --path ./customized-repository \
+  --base-sha <last-imported-upstream-sha> \
+  --target-sha <new-upstream-sha> \
+  --workspace ../upstream-candidate \
+  --approve
+```
+
+If the plan flags changed licence/notice files, complete the human review first and also pass `--rights-reviewed`. This flag records the user's acknowledgement; it is not legal advice or automated licence clearance.
+
+The command requires the customized HEAD and target commit to be reachable from local refs. It creates a separate full clone without hardlinks or submodules, creates a candidate branch, and performs a normal three-way merge without committing. The original customized repository remains untouched.
+
+Possible outcomes:
+- `candidate_ready_for_review`: Git completed the merge without conflicts. Inspect the candidate diff and run only approved tests in an isolated environment.
+- `blocked`: conflicts remain in the candidate. Do not accept it automatically; resolve manually or discard the candidate.
+
+The candidate is deliberately left uncommitted. This command does not run source scripts, tests, builds, update the original repository, advance the imported baseline, or publish anything. The candidate folder is yours to inspect, retain, or delete.
+
+## Candidate acceptance (not yet implemented)
+
+A later batch will add controlled verification and provenance acceptance. Until then, do not treat a clean candidate as a completed upstream update. The original customized ref remains the authoritative copy.
 
 ## Safety and limitations
 
 - Inspection, rights scanning, and sync planning are read-only and do not execute application code, scripts, installers, hooks, or builds.
+- Candidate integration runs only Git's built-in merge in a separate clone; repository-local custom Git drivers are rejected before planning.
 - The sync planner uses local Git objects; it does not fetch remote updates itself.
 - A human reviewer must confirm exact licence terms, intended use, obligations, compatibility, and third-party rights before customization or distribution.
 - Upstream synchronization must never silently discard custom work.
