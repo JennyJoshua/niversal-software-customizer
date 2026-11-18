@@ -7,18 +7,21 @@
 - [x] Static source inspector implemented and merged (PR #4).
 - [x] Licence and third-party rights evidence scanner implemented and merged (PR #5).
 - [x] Safe upstream synchronization requirements and architecture specified (PR #7).
-- [x] Read-only, baseline-aware upstream sync planner implemented in feature branch; merge pending CI/review.
+- [x] Read-only, baseline-aware upstream sync planner implemented and merged (PR #8).
+- [x] Isolated, uncommitted candidate integration implemented in feature branch; merge pending CI/review.
 
 ## Phase 3 — Safe upstream synchronization
 
 - [x] Require full base and target commit SHAs.
-- [x] Reject shallow history, dirty working trees, and invalid/non-ancestor baselines.
+- [x] Reject shallow history, dirty working trees, and invalid/stale baselines.
 - [x] Produce deterministic path-level upstream/local change classifications.
 - [x] Run a non-mutating Git three-way merge preflight and block conflicts.
 - [x] Flag common licence/notice file changes for human rights review.
-- [ ] Candidate integration in a disposable/recoverable working copy.
-- [ ] Preserve original customized ref and support candidate discard/recovery.
-- [ ] Verify candidate tests and produce full sync/provenance record.
+- [x] Require explicit approval and rights-review acknowledgement when relevant.
+- [x] Create candidate integration in a separate full clone without hardlinks or submodules.
+- [x] Preserve original customized HEAD and working-tree state during candidate creation.
+- [ ] Add candidate verification, acceptance, and baseline advancement.
+- [ ] Add automated candidate discard/recovery and complete provenance.
 - [ ] Test deletion/rename edge cases and failed candidate verification.
 
 ## Phase 4 — Configuration and branding planning
