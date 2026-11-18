@@ -71,3 +71,32 @@ def test_unlicensed_project_is_never_approved(tmp_path: Path):
     assert report["review_record"]["decision"] == "pending_human_review"
     assert report["legal_approval"] is False
     assert report["customization_gate"] == "blocked"
+
+
+
+def test_recognizes_common_licence_notice_and_attribution_filenames(tmp_path: Path):
+    filenames = [
+        "LICENCE.txt", "COPYING.LESSER", "NOTICE.md", "AUTHORS.md",
+        "COPYRIGHT", "ATTRIBUTION.md", "THIRD-PARTY-NOTICES.txt",
+    ]
+    for filename in filenames:
+        (tmp_path / filename).write_text("Evidence for human review", encoding="utf-8")
+    report = scan_licence_evidence(tmp_path)
+    paths = {
+        item["path"]
+        for item in report["other_rights_evidence"]["root_notice_author_authorship_files"]
+    }
+    paths.update(item["path"] for item in report["project_licence"]["root_evidence_files"])
+    assert set(filenames) <= paths
+
+
+def test_reads_project_licence_declaration_from_package_metadata(tmp_path: Path):
+    (tmp_path / "package.json").write_text(json.dumps({
+        "name": "declared-project", "license": "MIT",
+    }), encoding="utf-8")
+    report = scan_licence_evidence(tmp_path)
+    assert report["project_licence"]["manifest_declarations"] == [
+        {"manifest": "package.json", "expression": "MIT"}
+    ]
+    assert report["project_licence"]["missing_root_licence_evidence"] is False
+    assert report["customization_gate"] == "blocked"
