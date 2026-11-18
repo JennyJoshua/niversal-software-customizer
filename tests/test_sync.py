@@ -107,6 +107,7 @@ def test_missing_or_non_ancestor_base_is_rejected(tmp_path):
 def test_rights_file_changes_trigger_human_review_flag(tmp_path):
     repo, base = init_repo(tmp_path)
     target = commit_file(repo, "LICENSE", "Updated terms\n", "upstream licence change")
+    git(repo, "reset", "--hard", base)
 
     plan = create_sync_plan(repo, base, target)
 
