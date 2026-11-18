@@ -10,7 +10,21 @@ This is not a universal source-code converter, reverse-engineering tool, or meth
 
 ## Current status
 
-Foundation stage. The repository currently defines the intended scope and initial project skeleton. A production customization engine is not yet implemented.
+**Foundation + first inspection capability.** The initial read-only repository inspector is implemented. Branding transformations and production adapters are not yet implemented.
+
+## First capability: static inspection
+
+Install and run locally:
+
+```bash
+python -m pip install -e ".[dev]"
+usc inspect --path ./source-project
+usc inspect --repo-url https://github.com/OWNER/REPOSITORY --revision v1.2.3
+```
+
+The inspector inventories project files, detects common technology manifests, identifies licence/notice filenames, and records the Git commit when available. It does not execute project scripts or modify the inspected source.
+
+A detected technology is only a candidate signal. Licence and third-party rights still require human review.
 
 ## Principles
 
@@ -22,10 +36,6 @@ Foundation stage. The repository currently defines the intended scope and initia
 - Use free/open-source tools and GitHub Actions where practical.
 - Never execute untrusted project scripts during static inspection.
 
-## First milestone
-
-A small Python command-line foundation and a web application adapter supporting only clearly identified branding surfaces. Unsupported or ambiguous projects must be rejected safely.
-
 ## Repository guide
 
 - PROJECT_REQUIREMENTS.md — scope and functional requirements
@@ -35,7 +45,6 @@ A small Python command-line foundation and a web application adapter supporting 
 - docs/ — licensing, security, workflow, and adapter guidance
 - configuration/ — example project and branding configuration
 - engine/ — core orchestration package
-- adapters/ — technology-specific adapters
 - tests/ — automated tests
 - .github/workflows/ — CI checks
 
