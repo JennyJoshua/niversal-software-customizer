@@ -167,6 +167,15 @@ def test_sync_candidate_cli_requires_approval_and_writes_report(tmp_path, capsys
     assert "explicit --approve" in capsys.readouterr().err
     assert not workspace.exists()
 
+    assert main([
+        "sync-candidate", "--path", str(repo),
+        "--base-sha", base, "--target-sha", target,
+        "--workspace", str(workspace), "--approve",
+        "--output", str(workspace / "candidate-report.json"),
+    ]) == 2
+    assert "outside the candidate workspace" in capsys.readouterr().err
+    assert not workspace.exists()
+
     output = tmp_path / "candidate-report.json"
     assert main([
         "sync-candidate", "--path", str(repo),
