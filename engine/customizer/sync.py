@@ -59,6 +59,24 @@ def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProc
     return result
 
 
+def _assert_no_custom_git_drivers(repo: Path) -> None:
+    """Reject repository-local Git settings that could execute external commands."""
+    unsafe_settings = (
+        (r"^merge\\..*\\.driver$", "custom merge drivers"),
+        (r"^filter\\..*\\.(clean|smudge|process)$", "external filter drivers"),
+        (r"^core\\.fsmonitor$", "external filesystem monitor"),
+    )
+    for pattern, label in unsafe_settings:
+        result = _git(repo, "config", "--local", "--get-regexp", pattern, check=False)
+        if result.returncode == 0:
+            raise SyncPlanError(
+                f"Repository-local {label} are configured. Disable them before planning; "
+                "the planner will not execute custom Git commands."
+            )
+        if result.returncode not in (1,):
+            raise SyncPlanError("Git configuration could not be checked safely.")
+
+
 def _resolve_commit(repo: Path, value: str, label: str) -> str:
     if not isinstance(value, str) or not _SHA_RE.fullmatch(value):
         raise SyncPlanError(f"{label} must be a full 40- or 64-character commit SHA.")
@@ -122,6 +140,7 @@ def create_sync_plan(
 
     base = _resolve_commit(repo, base_sha, "Base SHA")
     target = _resolve_commit(repo, target_sha, "Target SHA")
+    _assert_no_custom_git_drivers(repo)
     head = _git(repo, "rev-parse", "--verify", "HEAD^{commit}").stdout.strip().lower()
     status = _git(repo, "status", "--porcelain=v1", "--untracked-files=all").stdout
     if status:
