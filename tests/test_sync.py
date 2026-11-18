@@ -112,3 +112,21 @@ def test_rights_file_changes_trigger_human_review_flag(tmp_path):
 
     assert plan["rights_review_required"] is True
     assert plan["rights_review_paths"] == ["LICENSE"]
+
+
+def test_stale_recorded_base_is_rejected_when_upstream_commit_already_merged(tmp_path):
+    repo, base = init_repo(tmp_path)
+    target = commit_file(repo, "upstream.txt", "upstream\n", "upstream")
+    commit_file(repo, "custom.txt", "custom\n", "customization after upstream merge")
+
+    with pytest.raises(SyncPlanError, match="not the exact merge base"):
+        create_sync_plan(repo, base, target)
+
+
+def test_shallow_repository_is_rejected(tmp_path):
+    repo, base = init_repo(tmp_path)
+    target = commit_file(repo, "upstream.txt", "upstream\n", "upstream")
+    (repo / ".git" / "shallow").write_text(base + "\n", encoding="ascii")
+
+    with pytest.raises(SyncPlanError, match="Shallow history"):
+        create_sync_plan(repo, base, target)
