@@ -33,13 +33,35 @@ usc sync-plan --path ./customized-repository --base-sha <base-sha> --target-sha 
 ```
 
 The planner:
-- Requires full commit SHAs, complete local history, a clean working tree, and the base as an ancestor of both sides.
+- Requires full commit SHAs, complete local history, a clean working tree, and the base as the exact merge base of customized HEAD and upstream target.
+- Rejects repository-local custom merge/filter drivers and external filesystem monitors.
 - Reports upstream and local changed paths, path overlaps, and upstream rights/notice file changes.
 - Uses `git merge-tree --write-tree` for a non-mutating three-way merge preflight.
 - Marks a plan blocked when Git reports merge conflicts.
 - Does not fetch, checkout, merge, write files, update refs, execute hooks, or run project scripts.
 
-A `ready_for_review` status is not approval and not proof of semantic compatibility. It only means Git's preflight found no merge conflict. The planner is not yet a candidate integration engine.
+A `ready_for_review` status is not approval and not proof of semantic compatibility. It only means Git's preflight found no merge conflict. The planner is not an integration acceptance engine.
+
+## Current implementation: isolated candidate creation
+
+The command is:
+
+```bash
+usc sync-candidate --path ./customized-repository --base-sha <base-sha> --target-sha <target-sha> --workspace ../candidate --approve
+```
+
+Add `--rights-reviewed` when the plan flags changed licence/notice files, after a human has reviewed the evidence.
+
+Candidate creation:
+- Re-runs the read-only plan and blocks before cloning if conflicts are detected.
+- Requires explicit approval and, when flagged, explicit rights-review acknowledgement.
+- Requires target and customized commits to be reachable from local refs.
+- Creates a full separate clone with copied objects (no hardlinks) and no submodules.
+- Creates a dedicated candidate branch and performs a normal three-way merge without committing.
+- Leaves any unexpected merge conflicts in the candidate for manual resolution; it never auto-resolves.
+- Verifies the original customized HEAD and working-tree status remain unchanged.
+
+The candidate is left uncommitted and is only `candidate_ready_for_review` when Git reports no merge conflicts. The command does not run tests/builds, update the source repository, advance the baseline, finalize provenance, or authorize distribution.
 
 ## Plan contents
 
@@ -51,20 +73,14 @@ A deterministic, read-only plan reports:
 - Changes to common licence/notice filenames requiring renewed rights review.
 - Whether integration approval is still required and whether integration occurred.
 
-## Integration rules for the next implementation batch
+## Integration acceptance rules for the next implementation batch
 
-- Fetch and integrate in a disposable clone/worktree with no secrets and no privileged hooks.
-- Require a complete common history and a valid base.
-- Use normal three-way Git merge semantics; do not use blanket ours/theirs strategies.
-- If a conflict or ambiguous rename occurs, stop and require explicit human resolution outside automatic sync.
-- Never overwrite the existing customized ref during planning or candidate creation.
-- Preserve the original ref until the candidate has passed review and configured tests.
+- Inspect the complete candidate diff against both the upstream target and original customized state.
 - Re-check rights evidence when upstream changes affect licences, dependencies, assets, fonts, icons, datasets, or trademarks.
-- Do not apply branding transformations as part of upstream sync; keep synchronization and branding as separate, auditable operations.
-
-## Verification and provenance
-
-Before acceptance, inspect the complete candidate diff against both the upstream target and the original customized state. Run configured tests/builds in an isolated environment. Record the revisions, path report, conflicts/resolutions, reviewer decision, test commands/results, and resulting commit SHA.
+- Run approved tests/builds in an isolated environment; do not execute untrusted scripts with secrets or privileged access.
+- Preserve the original ref until candidate verification succeeds and an explicit acceptance step is performed.
+- Record old/new upstream SHAs, customized revision, changed paths, conflict decisions, test results, reviewer decision, and resulting commit SHA.
+- Keep upstream synchronization separate from branding transformations.
 
 ## Failure behavior
 
@@ -72,16 +88,17 @@ Missing baseline, shallow/incomplete history, unsupported Git state, unsafe path
 
 ## Test matrix
 
-1. Upstream-only change integrates while local custom files remain byte-for-byte unchanged.
+1. Upstream-only change integrates into candidate while local custom-only files remain byte-for-byte unchanged.
 2. Local-only custom change survives an upstream update.
-3. Same-line/same-file overlapping edits produce a conflict and no integration.
+3. Same-line/same-file overlapping edits produce a conflict and no automatic resolution.
 4. Non-overlapping edits to the same file are identified as both-changed and preflighted by Git.
 5. Upstream deletion of a locally customized file blocks or reports conflict; it never silently deletes the custom file.
 6. Rename plus local edit is detected and safely blocked if mapping is ambiguous.
 7. Missing baseline or shallow history blocks planning.
-8. Failed verification leaves the original customized ref unchanged.
-9. Successful candidate records the new upstream baseline and complete provenance.
+8. Failed candidate verification leaves the original customized ref unchanged.
+9. Candidate creation requires explicit approval and rights-review acknowledgement when applicable.
+10. Successful acceptance records the new upstream baseline and complete provenance.
 
 ## Delivery status
 
-The read-only planner is implemented. Candidate integration, automated test/build verification, and provenance acceptance remain future work. Do not describe the full upstream update workflow as complete until those capabilities pass their tests.
+Read-only planning and isolated, uncommitted candidate creation are implemented. Candidate verification, acceptance, recovery automation, and final provenance remain future work. Do not describe the full upstream update workflow as complete until those capabilities pass their tests.

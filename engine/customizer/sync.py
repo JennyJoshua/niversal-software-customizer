@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -225,3 +226,105 @@ def create_sync_plan(
             "has not been modified; candidate integration is a separate operation."
         ),
     }
+
+
+def create_sync_candidate(
+    repository: str | Path,
+    base_sha: str,
+    target_sha: str,
+    workspace: str | Path,
+    *,
+    approved: bool = False,
+    rights_reviewed: bool = False,
+) -> dict[str, Any]:
+    """Create an isolated, uncommitted candidate merge; never modify the source repo."""
+    if not approved:
+        raise SyncPlanError("Candidate creation requires explicit --approve confirmation.")
+    repo = Path(repository).expanduser().resolve()
+    workspace_arg = Path(workspace).expanduser()
+    if not workspace_arg.name or workspace_arg.name in (".", ".."):
+        raise SyncPlanError("Candidate workspace must be a new directory path.")
+    parent = workspace_arg.parent.expanduser().resolve()
+    if not parent.is_dir():
+        raise SyncPlanError("Candidate workspace parent directory must already exist.")
+    candidate = parent / workspace_arg.name
+    if candidate.exists() or candidate.is_symlink():
+        raise SyncPlanError("Candidate workspace already exists; choose a new, empty path.")
+    if candidate == repo or repo in candidate.parents:
+        raise SyncPlanError("Candidate workspace must be outside the customized repository.")
+
+    plan = create_sync_plan(repo, base_sha, target_sha)
+    if plan["status"] != "ready_for_review":
+        raise SyncPlanError("The sync plan is blocked by conflicts; candidate integration is prohibited.")
+    if plan["rights_review_required"] and not rights_reviewed:
+        raise SyncPlanError(
+            "Upstream licence/notice files changed. Complete human rights review before using --rights-reviewed."
+        )
+
+    target = plan["upstream_target_sha"]
+    customized = plan["customized_sha"]
+    for commit, label in ((target, "upstream target"), (customized, "customized HEAD")):
+        refs = _git(repo, "for-each-ref", "--contains", commit, "--format=%(refname)").stdout.strip()
+        if not refs:
+            raise SyncPlanError(f"The {label} must be reachable from a local Git ref before candidate creation.")
+
+    original_head = _git(repo, "rev-parse", "--verify", "HEAD^{commit}").stdout.strip().lower()
+    original_status = _git(repo, "status", "--porcelain=v1", "--untracked-files=all").stdout
+    branch_name = f"usc-sync-candidate-{target[:12]}"
+    try:
+        _git(
+            repo,
+            "-c", "protocol.file.allow=always",
+            "clone", "--no-hardlinks", "--no-checkout", "--no-recurse-submodules",
+            "--no-tags", "--", str(repo), str(candidate),
+        )
+        _git(candidate, "checkout", "--no-track", "-b", branch_name, customized)
+        merge_result = _git(
+            candidate,
+            "-c", "user.name=USC Candidate",
+            "-c", "user.email=usc-candidate@invalid",
+            "merge", "--no-commit", "--no-ff", "--no-edit", target, check=False
+        )
+        if merge_result.returncode not in (0, 1):
+            raise SyncPlanError(
+                "Candidate merge could not be completed safely: "
+                + (merge_result.stderr.strip() or merge_result.stdout.strip())
+            )
+
+        conflict_paths = _git(
+            candidate, "diff", "--name-only", "--diff-filter=U", "-z"
+        ).stdout.split("\0")
+        conflict_paths = sorted(path for path in conflict_paths if path)
+        has_conflicts = merge_result.returncode == 1
+        current_head = _git(repo, "rev-parse", "--verify", "HEAD^{commit}").stdout.strip().lower()
+        current_status = _git(repo, "status", "--porcelain=v1", "--untracked-files=all").stdout
+        if current_head != original_head or current_status != original_status:
+            raise SyncPlanError(
+                "The original customized repository changed during candidate creation; candidate discarded."
+            )
+
+        return {
+            "schema_version": "1.0",
+            "operation": "upstream_sync_candidate",
+            "status": "blocked" if has_conflicts else "candidate_ready_for_review",
+            "candidate_path": str(candidate),
+            "candidate_branch": branch_name,
+            "base_sha": plan["base_sha"],
+            "upstream_target_sha": target,
+            "customized_sha": customized,
+            "merge_conflicts": conflict_paths,
+            "merge_output": merge_result.stdout.strip(),
+            "rights_reviewed": bool(rights_reviewed),
+            "integration_committed": False,
+            "original_repository_unchanged": True,
+            "tests_run": False,
+            "note": (
+                "Candidate is isolated and uncommitted. Review the diff and run approved verification before accepting it."
+                if not has_conflicts else
+                "Candidate contains unresolved conflicts. Do not accept it automatically; resolve manually or discard the candidate."
+            ),
+        }
+    except Exception:
+        if candidate.exists() and not candidate.is_symlink():
+            shutil.rmtree(candidate)
+        raise
