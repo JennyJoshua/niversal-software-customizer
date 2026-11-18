@@ -14,5 +14,8 @@
 | D-010 | Require approval before material changes and distribution. | Accepted | Avoid unintended scope and publishing. |
 | D-011 | No hosted SaaS or customer portal in the first release. | Accepted | Prove core workflow first. |
 | D-012 | Retain current repository name: niversal-software-customizer. | Recorded | Match the repository the user created; renaming can be considered separately. |
+| D-013 | Treat safe upstream synchronization as a core capability. | Accepted | Customized products must receive upstream fixes without silently losing custom work. |
+| D-014 | Use a recorded upstream baseline and three-way sync; stop on conflicts. | Accepted | Make changes explainable, recoverable, and testable rather than overwriting customizations. |
+| D-015 | Preserve the original customized ref until the candidate sync passes review and verification. | Accepted | Ensure failed or conflicting updates cannot destroy the working product. |
 
 Material scope, architecture, hosting, cost, and distribution changes must be recorded here. Per-project licence decisions must not be generalized to all upstream projects.
