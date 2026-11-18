@@ -53,12 +53,12 @@ usc sync-candidate --path ./customized-repository --base-sha <base-sha> --target
 Add `--rights-reviewed` when the plan flags changed licence/notice files, after a human has reviewed the evidence.
 
 Candidate creation:
-- Re-runs the read-only plan and blocks if conflicts exist.
+- Re-runs the read-only plan and blocks before cloning if conflicts are detected.
 - Requires explicit approval and, when flagged, explicit rights-review acknowledgement.
 - Requires target and customized commits to be reachable from local refs.
 - Creates a full separate clone with copied objects (no hardlinks) and no submodules.
 - Creates a dedicated candidate branch and performs a normal three-way merge without committing.
-- Leaves unresolved conflicts in the candidate for manual resolution; it never auto-resolves.
+- Leaves any unexpected merge conflicts in the candidate for manual resolution; it never auto-resolves.
 - Verifies the original customized HEAD and working-tree status remain unchanged.
 
 The candidate is left uncommitted and is only `candidate_ready_for_review` when Git reports no merge conflicts. The command does not run tests/builds, update the source repository, advance the baseline, finalize provenance, or authorize distribution.
