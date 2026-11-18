@@ -1,6 +1,6 @@
 # Universal Software Customizer
 
-A framework for legally inspecting, rebranding, adapting, testing, and building eligible open-source software into independently branded products.
+A framework for responsibly inspecting, rebranding, adapting, testing, and building eligible open-source software into independently branded products.
 
 ## Purpose
 
@@ -10,21 +10,22 @@ This is not a universal source-code converter, reverse-engineering tool, or meth
 
 ## Current status
 
-**Foundation + first inspection capability.** The initial read-only repository inspector is implemented. Branding transformations and production adapters are not yet implemented.
+**Foundation + static inspection + rights-evidence reporting.** The tool can inspect source repositories and collect project, dependency, notice, asset, font, dataset, and trademark review signals. Branding transformations and production adapters are not yet implemented.
 
-## First capability: static inspection
+## First capabilities
 
-Install and run locally:
+Install and run:
 
 ```bash
 python -m pip install -e ".[dev]"
 usc inspect --path ./source-project
 usc inspect --repo-url https://github.com/OWNER/REPOSITORY --revision v1.2.3
+usc licences --path ./source-project --output rights-review.json
 ```
 
-The inspector inventories project files, detects common technology manifests, identifies licence/notice filenames, and records the Git commit when available. It does not execute project scripts or modify the inspected source.
+Inspection is static and read-only. The rights report inventories root and nested evidence, extracts supported dependency declarations, and highlights asset and trademark review areas. It does not execute project code or determine legal permission.
 
-A detected technology is only a candidate signal. Licence and third-party rights still require human review.
+**Every rights report remains human-review-required and blocks customization.** A detected licence file or manifest declaration is evidence, not legal clearance.
 
 ## Principles
 
@@ -41,7 +42,7 @@ A detected technology is only a candidate signal. Licence and third-party rights
 - PROJECT_REQUIREMENTS.md — scope and functional requirements
 - ARCHITECTURE.md — proposed system design
 - DECISIONS.md — accepted project decisions
-- ROADMAP.md — phased delivery plan
+- ROADMAP.md — phased delivery
 - docs/ — licensing, security, workflow, and adapter guidance
 - configuration/ — example project and branding configuration
 - engine/ — core orchestration package
