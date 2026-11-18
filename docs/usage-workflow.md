@@ -75,7 +75,8 @@ usc sync-candidate --path ./customized-repository \
   --base-sha <last-imported-upstream-sha> \
   --target-sha <new-upstream-sha> \
   --workspace ../upstream-candidate \
-  --approve
+  --approve \\
+  --output ../candidate-report.json
 ```
 
 If the plan flags changed licence/notice files, complete the human review first and also pass `--rights-reviewed`. This flag records the user's acknowledgement; it is not legal advice or automated licence clearance.
@@ -100,3 +101,49 @@ A later batch will add controlled verification and provenance acceptance. Until 
 - The sync planner uses local Git objects; it does not fetch remote updates itself.
 - A human reviewer must confirm exact licence terms, intended use, obligations, compatibility, and third-party rights before customization or distribution.
 - Upstream synchronization must never silently discard custom work.
+
+
+## Verify an isolated candidate (evidence validation only)
+
+After reviewing the complete candidate diff, run the approved test/build process in a disposable, unprivileged environment with no production secrets. Do not run untrusted upstream scripts on a personal device or with privileged credentials. Record the candidate's Git index tree SHA:
+
+```bash
+git -C ../upstream-candidate write-tree
+```
+
+Prepare a reviewer evidence file, for example:
+
+```json
+{
+  "schema_version": "1.0",
+  "verification_status": "passed",
+  "reviewer": "Reviewer or team",
+  "verified_at": "2026-11-19T10:30:00+10:00",
+  "verification_source": "https://github.com/OWNER/REPOSITORY/actions/runs/RUN_ID",
+  "candidate_tree_sha": "FULL_TREE_SHA_FROM_GIT_WRITE_TREE",
+  "rights_reviewed": false,
+  "test_results": [
+    {
+      "name": "unit and regression tests",
+      "passed": true,
+      "evidence_ref": "https://github.com/OWNER/REPOSITORY/actions/runs/RUN_ID"
+    }
+  ]
+}
+```
+
+Use `rights_reviewed: true` only when the candidate report records that the relevant licence/notice review acknowledgement was given. Every test result must pass and include a reference to its logs or report. The timestamp must include a timezone.
+
+Validate the evidence against the exact candidate:
+
+```bash
+usc sync-verify --candidate-report ../candidate-report.json \
+  --evidence ../verification-evidence.json \
+  --output ../verification-report.json
+```
+
+The verifier checks the candidate branch, original customized HEAD, upstream MERGE_HEAD, unresolved conflicts, unstaged/untracked changes, tree SHA, timezone-aware reviewer timestamp, and successful test-evidence structure. It does not execute tests or independently authenticate external CI evidence. The resulting report is not legal approval and does not accept the candidate or update the original repository.
+
+## Candidate acceptance (not yet implemented)
+
+Even a `verification_passed` report does not change the original customized repository. Explicit acceptance, race-safe original-HEAD checks, baseline advancement, and complete provenance are still future work. Until then, keep the original customized ref authoritative.

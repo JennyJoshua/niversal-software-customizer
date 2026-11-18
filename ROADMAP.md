@@ -8,7 +8,8 @@
 - [x] Licence and third-party rights evidence scanner implemented and merged (PR #5).
 - [x] Safe upstream synchronization requirements and architecture specified (PR #7).
 - [x] Read-only, baseline-aware upstream sync planner implemented and merged (PR #8).
-- [x] Isolated, uncommitted candidate integration implemented in feature branch; merge pending CI/review.
+- [x] Isolated, uncommitted candidate integration implemented and merged (PR #9).
+- [ ] Candidate verification, acceptance, and baseline advancement.
 
 ## Phase 3 — Safe upstream synchronization
 
@@ -20,9 +21,12 @@
 - [x] Require explicit approval and rights-review acknowledgement when relevant.
 - [x] Create candidate integration in a separate full clone without hardlinks or submodules.
 - [x] Preserve original customized HEAD and working-tree state during candidate creation.
-- [ ] Add candidate verification, acceptance, and baseline advancement.
+- [x] Validate external test evidence against the candidate branch, merge state, and exact Git tree SHA.
+- [x] Require timezone-aware verification timestamps, reviewer identity, passing test entries, and evidence references.
+- [ ] Authenticate CI evidence independently and define a trusted verification policy.
+- [ ] Add explicit candidate acceptance, original-HEAD compare-and-swap, and baseline advancement.
 - [ ] Add automated candidate discard/recovery and complete provenance.
-- [ ] Test deletion/rename edge cases and failed candidate verification.
+- [ ] Test deletion/rename edge cases and end-to-end failed acceptance/recovery.
 
 ## Phase 4 — Configuration and branding planning
 

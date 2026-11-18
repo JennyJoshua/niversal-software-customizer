@@ -10,7 +10,7 @@ This is not a universal source-code converter, reverse-engineering tool, or meth
 
 ## Current status
 
-**Foundation + static inspection + rights-evidence reporting + read-only upstream planning + isolated candidate integration.** The tool can inspect source repositories, collect project/dependency rights evidence, plan a three-way upstream update, and create an uncommitted candidate merge in a separate clone. Candidate verification, acceptance, provenance finalization, branding transformations, and production adapters are not yet implemented.
+**Foundation + static inspection + rights-evidence reporting + read-only upstream planning + isolated candidate integration + candidate evidence validation.** The tool can inspect source repositories, collect project/dependency rights evidence, plan a three-way upstream update, create an uncommitted candidate merge in a separate clone, and validate reviewer-supplied test evidence against the candidate's current Git tree. Explicit acceptance, baseline advancement, complete provenance, branding transformations, and production adapters are not yet implemented.
 
 ## First capabilities
 
@@ -22,14 +22,17 @@ usc inspect --path ./source-project
 usc inspect --repo-url https://github.com/OWNER/REPOSITORY --revision v1.2.3
 usc licences --path ./source-project --output rights-review.json
 usc sync-plan --path ./customized-repository --base-sha <last-imported-upstream-sha> --target-sha <new-upstream-sha>
-usc sync-candidate --path ./customized-repository --base-sha <last-imported-upstream-sha> --target-sha <new-upstream-sha> --workspace ../upstream-candidate --approve
+usc sync-candidate --path ./customized-repository --base-sha <last-imported-upstream-sha> --target-sha <new-upstream-sha> --workspace ../upstream-candidate --approve --output ../candidate-report.json
+usc sync-verify --candidate-report ../candidate-report.json --evidence ../verification-evidence.json --output ../verification-report.json
 ```
 
 Inspection, rights scanning, and sync planning do not execute project code. The sync planner requires a complete local Git history, a clean working tree, and a recorded base commit that is the exact merge base of the customized branch and selected upstream target. Fetching is a separate user-controlled step.
 
 A clean sync plan is only **ready for review**; it is not an integration approval or guarantee that all semantic interactions are safe. Conflicts block the plan. The planner never changes the working tree or refs.
 
-Candidate creation requires explicit `--approve`, and `--rights-reviewed` when common licence/notice files changed. It creates a full, separate clone and leaves the merge uncommitted for review. The original customized repository is not changed. If preflight detects conflicts, candidate creation is blocked before a clone is made. If an unexpected conflict occurs during candidate merge, the candidate remains unresolved for manual review or discard. Candidate creation does not run project tests/builds, commit changes, update the upstream baseline, or authorize distribution.
+Candidate creation requires explicit `--approve`, and `--rights-reviewed` when common licence/notice files changed. It creates a full, separate clone and leaves the merge uncommitted for review. The original customized repository is not changed. If preflight detects conflicts, candidate creation is blocked before a clone is made. If an unexpected conflict occurs during candidate merge, the candidate remains unresolved for manual review or discard.
+
+The new `sync-verify` command validates reviewer-supplied evidence against the exact candidate tree, including branch/commit identity, merge state, absence of unresolved conflicts and unstaged changes, tree SHA, timezone-aware reviewer timestamp, and successful test-result references. It does not execute tests or independently authenticate CI evidence. Verification does not commit changes, update the original repository, advance the upstream baseline, or authorize distribution.
 
 The rights report inventories root and nested evidence, extracts supported dependency declarations, and highlights asset and trademark review areas. It does not execute project code or determine legal permission. Every rights report remains human-review-required and blocks customization.
 

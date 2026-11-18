@@ -211,3 +211,105 @@ def test_candidate_requires_approval_and_rights_review(tmp_path):
         create_sync_candidate(repo, base, target, workspace, approved=True)
 
     assert not workspace.exists()
+
+
+def test_candidate_verification_binds_external_evidence_to_current_tree(tmp_path):
+    import json
+    from customizer.sync import create_sync_candidate
+    from customizer.verification import create_sync_verification
+
+    repo, base = init_repo(tmp_path)
+    target = commit_file(repo, "upstream.txt", "upstream update\n", "upstream change")
+    git(repo, "branch", "upstream/test", target)
+    git(repo, "reset", "--hard", base)
+    commit_file(repo, "custom.txt", "custom work\n", "custom change")
+    workspace = tmp_path / "candidate"
+    candidate = create_sync_candidate(repo, base, target, workspace, approved=True)
+    report_path = tmp_path / "candidate-report.json"
+    report_path.write_text(json.dumps(candidate), encoding="utf-8")
+    tree_sha = git(workspace, "write-tree")
+    evidence_path = tmp_path / "evidence.json"
+    evidence_path.write_text(json.dumps({
+        "schema_version": "1.0",
+        "verification_status": "passed",
+        "reviewer": "Independent reviewer",
+        "verified_at": "2026-11-19T10:30:00+10:00",
+        "verification_source": "https://github.com/example/project/actions/runs/123",
+        "candidate_tree_sha": tree_sha,
+        "rights_reviewed": False,
+        "test_results": [{
+            "name": "upstream and customization regression suite",
+            "passed": True,
+            "evidence_ref": "https://github.com/example/project/actions/runs/123"
+        }]
+    }), encoding="utf-8")
+
+    result = create_sync_verification(report_path, evidence_path)
+
+    assert result["status"] == "verification_passed"
+    assert result["candidate_tree_sha"] == tree_sha
+    assert result["evidence_authenticated"] is False
+    assert result["customized_sha"] == candidate["customized_sha"]
+    assert git(repo, "rev-parse", "HEAD") == candidate["customized_sha"]
+
+
+def test_candidate_verification_rejects_changed_tree_and_failed_tests(tmp_path):
+    import json
+    from customizer.sync import create_sync_candidate
+    from customizer.verification import create_sync_verification
+
+    repo, base = init_repo(tmp_path)
+    target = commit_file(repo, "upstream.txt", "upstream update\n", "upstream change")
+    git(repo, "branch", "upstream/test", target)
+    git(repo, "reset", "--hard", base)
+    commit_file(repo, "custom.txt", "custom work\n", "custom change")
+    workspace = tmp_path / "candidate"
+    candidate = create_sync_candidate(repo, base, target, workspace, approved=True)
+    report_path = tmp_path / "candidate-report.json"
+    report_path.write_text(json.dumps(candidate), encoding="utf-8")
+    evidence = {
+        "schema_version": "1.0",
+        "verification_status": "passed",
+        "reviewer": "Reviewer",
+        "verified_at": "2026-11-19T00:30:00Z",
+        "verification_source": "CI run 123",
+        "candidate_tree_sha": "0" * 40,
+        "rights_reviewed": False,
+        "test_results": [{"name": "tests", "passed": True, "evidence_ref": "run 123"}]
+    }
+    evidence_path = tmp_path / "evidence.json"
+    evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+    with pytest.raises(SyncPlanError, match="candidate_tree_sha"):
+        create_sync_verification(report_path, evidence_path)
+
+    evidence["candidate_tree_sha"] = git(workspace, "write-tree")
+    evidence["test_results"][0]["passed"] = False
+    evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+    with pytest.raises(SyncPlanError, match="has not passed"):
+        create_sync_verification(report_path, evidence_path)
+
+
+def test_candidate_verification_requires_timezone_aware_timestamp(tmp_path):
+    import json
+    from customizer.sync import create_sync_candidate
+    from customizer.verification import create_sync_verification
+
+    repo, base = init_repo(tmp_path)
+    target = commit_file(repo, "upstream.txt", "upstream update\n", "upstream change")
+    git(repo, "branch", "upstream/test", target)
+    git(repo, "reset", "--hard", base)
+    commit_file(repo, "custom.txt", "custom work\n", "custom change")
+    workspace = tmp_path / "candidate"
+    candidate = create_sync_candidate(repo, base, target, workspace, approved=True)
+    report_path = tmp_path / "candidate-report.json"
+    report_path.write_text(json.dumps(candidate), encoding="utf-8")
+    evidence_path = tmp_path / "evidence.json"
+    evidence_path.write_text(json.dumps({
+        "schema_version": "1.0", "verification_status": "passed",
+        "reviewer": "Reviewer", "verified_at": "2026-11-19T10:30:00",
+        "verification_source": "CI run 123", "candidate_tree_sha": git(workspace, "write-tree"),
+        "rights_reviewed": False,
+        "test_results": [{"name": "tests", "passed": True, "evidence_ref": "run 123"}]
+    }), encoding="utf-8")
+    with pytest.raises(SyncPlanError, match="explicit timezone offset"):
+        create_sync_verification(report_path, evidence_path)
