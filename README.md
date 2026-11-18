@@ -22,7 +22,7 @@ usc inspect --path ./source-project
 usc inspect --repo-url https://github.com/OWNER/REPOSITORY --revision v1.2.3
 usc licences --path ./source-project --output rights-review.json
 usc sync-plan --path ./customized-repository --base-sha <last-imported-upstream-sha> --target-sha <new-upstream-sha>
-usc sync-candidate --path ./customized-repository --base-sha <last-imported-upstream-sha> --target-sha <new-upstream-sha> --workspace ../upstream-candidate --approve
+usc sync-candidate --path ./customized-repository --base-sha <last-imported-upstream-sha> --target-sha <new-upstream-sha> --workspace ../upstream-candidate --approve --output ../candidate-report.json
 usc sync-verify --candidate-report ../candidate-report.json --evidence ../verification-evidence.json --output ../verification-report.json
 ```
 
