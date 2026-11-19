@@ -94,10 +94,10 @@ def test_rejects_missing_or_tampered_provenance(tmp_path):
 
 def test_rejects_baseline_when_merge_commit_is_not_in_current_history(tmp_path):
     repo, upstream_sha, baseline_path, _ = make_repo_with_baseline(tmp_path)
-    other = git(repo, "checkout", "--orphan", "unrelated")
-    (repo / "unrelated.txt").write_text("unrelated\n", encoding="utf-8")
-    git(repo, "add", ".")
-    git(repo, "commit", "-qm", "unrelated history")
+    tree_sha = git(repo, "write-tree")
+    unrelated_sha = git(repo, "-c", "user.name=USC tests", "-c", "user.email=tests@example.invalid", "commit-tree", tree_sha, "-m", "unrelated history")
+    git(repo, "branch", "unrelated", unrelated_sha)
+    git(repo, "checkout", "unrelated")
     with pytest.raises(SyncPlanError, match="not an ancestor"):
         resolve_sync_base(repo, upstream_url=UPSTREAM_URL)
 

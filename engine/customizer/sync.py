@@ -131,7 +131,7 @@ def resolve_sync_base(
     if not isinstance(provenance_value, str) or not provenance_value.startswith(".usc/provenance/"):
         raise SyncPlanError("Stored baseline has an invalid provenance_path.")
     provenance_relative = Path(provenance_value)
-    if provenance_relative.is_absolute() or any(part in ("", ".", "..") for part in provenance_relative.parts):
+    if provenance_relative.is_absolute() or any(part in ("", ".", "..") for part in provenance_relative.parts) or provenance_relative.parent != Path(".usc/provenance"):
         raise SyncPlanError("Stored baseline provenance_path is unsafe.")
     provenance_path = repo / provenance_relative
     if provenance_path.is_symlink() or not provenance_path.is_file():
