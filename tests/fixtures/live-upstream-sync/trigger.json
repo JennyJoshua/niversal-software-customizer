@@ -1,0 +1,9 @@
+{
+  "base_sha": "c6f9afbcf27cf0c758f985edc583d5b272843db0",
+  "upstream_branch": "usc-live-fixture-upstream-v2",
+  "customized_branch": "usc-live-fixture-customized-v2",
+  "upstream_file": "tests/fixtures/live-upstream-sync/upstream-improvement.txt",
+  "upstream_content": "This file represents a harmless upstream-only improvement.\n",
+  "custom_file": "tests/fixtures/live-upstream-sync/custom-feature.txt",
+  "custom_content": "This file represents a customized product feature that must survive upstream synchronization.\n"
+}
