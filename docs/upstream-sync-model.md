@@ -191,3 +191,19 @@ No format-aware merge may bypass protected-feature checks, rights review, candid
 A dedicated, marker-gated GitHub Actions fixture exercises the complete remote evidence path. A push to a `usc-verify/**` branch first runs the trusted `CI` workflow. When that run has completed successfully, the separate `USC Live Sync Acceptance` workflow checks out the exact snapshot commit, creates a fresh local customized clone from fixture refs, recreates the candidate, and requires its index tree to equal the published snapshot tree.
 
 The second workflow then invokes the normal authenticated `sync-verify` implementation against the completed CI push run and invokes `sync-accept` only in its disposable local clone. It asserts that the custom-only feature and upstream-only change both survive and that baseline/provenance point to the accepted upstream target. It never pushes the accepted product branch. This is a maintainer smoke test using synthetic fixtures; it does not replace real customer-project testing or semantic regression coverage.
+
+
+## Live validation record — 20 November 2026
+
+The synthetic public-GitHub end-to-end fixture completed successfully:
+
+- Snapshot commit: `04f4f14b01be8be97bf361490c7167bc3ec0722c`
+- Snapshot tree: `6510cfc50e811eef6e7ca6fbae0176e488391b19`
+- Customized fixture commit: `7dfc827e516fc5dbcc207f3871460581623f88f0`
+- Upstream target: `bf5199c67ec6797baa54ba8a3b12671f1ff25ff5`
+- Authenticated CI push run: https://github.com/JennyJoshua/niversal-software-customizer/actions/runs/44633531926
+- Follow-on acceptance workflow: https://github.com/JennyJoshua/niversal-software-customizer/actions/runs/44633580230
+
+The test recreated the candidate from the fixture's public GitHub refs, confirmed its tree exactly matched the published snapshot, authenticated the completed CI run, and accepted the candidate only in a disposable local clone. It verified that the custom-only feature remained intact, the upstream-only improvement was included, and baseline/provenance advanced to the selected upstream target.
+
+This validates the tested remote workflow mechanics. It is not a substitute for application-specific regression tests or proof of semantic preservation across arbitrary customized software. The remote verification branch is intentionally retained for now because the available GitHub integration does not expose a safe delete-ref operation.
