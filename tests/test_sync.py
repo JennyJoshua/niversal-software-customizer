@@ -941,7 +941,7 @@ def test_registry_acceptance_rejects_missing_verified_test_evidence(tmp_path):
         )
 
     assert git(repo, "rev-parse", "HEAD") == original_head
-    assert (repo / "feature.py").read_text(encoding="utf-8") == "base feature\\n"
+    assert (repo / "feature.py").read_text(encoding="utf-8") == "base feature\n"
 
 
 def test_registry_acceptance_succeeds_only_with_exact_required_test_evidence(tmp_path):
