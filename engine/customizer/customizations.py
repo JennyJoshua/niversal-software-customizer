@@ -30,6 +30,15 @@ def _error(errors: list[str], message: str) -> None:
         errors.append(message)
 
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object key: {key}")
+        result[key] = value
+    return result
+
+
 def _safe_relative_file(root: Path, value: Any, *, label: str, errors: list[str]) -> str | None:
     if not isinstance(value, str) or not value or value.strip() != value:
         _error(errors, f"{label} must be a non-empty, trimmed relative path.")
@@ -104,7 +113,7 @@ def inspect_customization_registry(repository: str | Path) -> dict[str, Any]:
     root_arg = Path(repository).expanduser()
     try:
         root = root_arg.resolve(strict=True)
-    except OSError as exc:
+    except (OSError, RuntimeError) as exc:
         return {
             "schema_version": "1.0",
             "operation": "customization_registry_check",
@@ -148,8 +157,11 @@ def inspect_customization_registry(repository: str | Path) -> dict[str, Any]:
         return _report("blocked", ["Customization registry path is not a regular file."], [], 0)
 
     try:
-        data = json.loads(registry_file.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        data = json.loads(
+            registry_file.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_json_keys,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
         return _report("blocked", [f"Customization registry is unreadable or invalid JSON: {exc}"], [], 0)
 
     errors: list[str] = []
