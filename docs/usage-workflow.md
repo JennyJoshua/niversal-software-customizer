@@ -144,11 +144,6 @@ usc sync-verify --candidate-report ../candidate-report.json \
 
 The verifier checks the candidate branch, original customized HEAD, upstream MERGE_HEAD, unresolved conflicts, unstaged/untracked changes, tree SHA, timezone-aware reviewer timestamp, and successful test-evidence structure. It does not execute tests or independently authenticate external CI evidence. The resulting report is not legal approval and does not accept the candidate or update the original repository.
 
-## Candidate acceptance (not yet implemented)
-
-Even a `verification_passed` report does not change the original customized repository. Explicit acceptance, race-safe original-HEAD checks, baseline advancement, and complete provenance are still future work. Until then, keep the original customized ref authoritative.
-
-
 ## Explicitly accept a verified candidate
 
 Acceptance is a separate, mutating step. Before running it, inspect the candidate diff, verify the CI/test evidence yourself, and confirm that the candidate report and verification report belong to the same candidate. The original customized repository must still be on the exact branch and commit recorded when the candidate was created, with a clean working tree.
