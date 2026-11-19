@@ -179,10 +179,10 @@ Recovery validates the candidate's merge parents, committed provenance, and base
 
 The optional authenticated mode of sync verification checks a public GitHub Actions run through the GitHub REST API. It requires all of the following:
 - The run belongs to the exact trusted OWNER/REPOSITORY.
-- It is a completed, successful push run on a branch beginning usc-verify/.
+- It is a completed, successful push run on the exact isolated verification branch recorded in the snapshot report.
 - The run uses the expected workflow ID and path.
 - Every reported job completed successfully.
-- The run's head commit tree SHA equals the current candidate index tree SHA.
+- The run's head commit SHA, parent SHA, and tree SHA match the published snapshot and exact candidate tree.
 - The workflow file at that commit has the independently pinned trusted blob SHA.
 
 A run URL alone is not evidence. Do not copy a green run from another branch, repository, workflow, or candidate.
@@ -191,12 +191,12 @@ The candidate merge is currently uncommitted. Create a verification-only snapsho
 
 Run this command. It creates a one-parent snapshot commit whose tree exactly matches the candidate and prints a push command; it does not push automatically:
 
-\`\`\`bash
-usc sync-snapshot --path ./customized-repository \\\
-  --candidate-report ../candidate-report.json \\\
-  --push-url https://github.com/OWNER/FORK.git \\\
+```bash
+usc sync-snapshot --path ./customized-repository \
+  --candidate-report ../candidate-report.json \
+  --push-url https://github.com/OWNER/FORK.git \
   --output ../snapshot-report.json
-\`\`\`
+```
 
 Run the reported push command using your normal GitHub authentication. CI runs on branches under usc-verify/**. This temporary branch is for verification only and must not be merged into the product branch. After the run completes, use its URL with the snapshot report:
 
