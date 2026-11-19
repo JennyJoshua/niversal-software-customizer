@@ -39,7 +39,15 @@ The new `sync-verify` command validates evidence against the exact candidate tre
 
 The rights report inventories root and nested evidence, extracts supported dependency declarations, and highlights asset and trademark review areas. It does not execute project code or determine legal permission. Every rights report remains human-review-required and blocks customization.
 
-The `customization-check` command validates `.usc/customizations.json` against registry v1 rules, checks exact referenced files and symlink safety, and reports stale or ambiguous declarations. A missing registry is reported as `not_configured` so existing projects continue unchanged. Registry validation is read-only and does not yet classify upstream changes, execute tests, or enforce acceptance.
+The `customization-check` command validates `.usc/customizations.json` against registry v1 rules, checks exact referenced files and symlink safety, and reports stale or ambiguous declarations. A missing registry is reported as `not_configured` so existing projects continue unchanged. Registry validation is read-only. Sync planning now correlates upstream changes with registered customization paths, reports affected features and required regression test IDs, and blocks invalid registries, custom-only upstream edits, protected deletions, and unmapped overlapping changes. It does not execute tests or yet enforce the reported test IDs as acceptance evidence.
+
+## Repository identity
+
+The canonical GitHub repository is [JennyJoshua/universal-software-customizer](https://github.com/JennyJoshua/universal-software-customizer). The former `niversal-software-customizer` name is historical only; use the canonical name in all new links, documents, and handovers. See [repository identity](docs/repository-identity.md).
+
+## Registry-aware synchronization
+
+`usc sync-plan` now includes a `customization_impact` section when a valid `.usc/customizations.json` exists. It identifies affected registry entries, mapped changed paths, protection modes, and required test IDs. Invalid registries and unsafe protected-path changes block the plan. Required tests are reported for candidate review; this milestone does not execute them or yet make their evidence a hard acceptance gate. Projects without a registry retain the previous planning behaviour.
 
 ## Principles
 
