@@ -82,24 +82,24 @@ USC protects changes through isolated candidates, three-way Git integration, exp
 The policy is considered implemented for an adapter only when its allowlist, preservation tests, regression tests, and failure behaviour are present and passing. The existence of this policy document alone does not mean every listed area is already automatically detected or protected.
 
 
-## Machine-readable customization registry — planned capability
+## Machine-readable customization registry — v1 validation implemented
 
-The policy above defines what must be protected. It does not yet provide automatic feature-level detection. The next protection capability must introduce a versioned, project-owned registry (proposed location: `.usc/customizations.json`) that maps each meaningful customization to its implementation surfaces and verification evidence.
+The policy above is now complemented by a versioned, project-owned registry at `.usc/customizations.json`. The read-only command `usc customization-check --path <project>` validates the v1 declarations, exact path references, and protection-mode constraints. This is registry validation, not yet automatic feature-level detection or sync enforcement.
 
 A registry entry should include:
 - A stable customization ID and human-readable purpose.
 - A category: branding, feature/workflow, business rule, configuration, data/API contract, integration, or engineering asset.
-- Explicit file/path references, with exact paths preferred over broad globs.
-- A protection mode: preserve, require targeted regression tests, or block for human review.
-- Test identifiers and evidence references that demonstrate the behaviour.
-- An overlap policy and a human-readable reason for any exception.
+- Exact file path references with explicit ownership (`custom_only` or `mixed`); v1 does not support globs or structural selectors.
+- A protection mode: `preserve`, `require_regression_tests`, or `block_for_review`.
+- Stable test identifiers and optional credential-free HTTPS evidence references.
+- A human-readable `review_note` for entries blocked for review.
 
 Registry rules:
 - One feature may span multiple files, and one file may contain both upstream and custom behaviour. File ownership alone is therefore insufficient.
 - Do not use line numbers as durable protected-region identifiers. Where a mixed file needs finer-grained protection, support only stable, explicitly declared structural selectors or markers in formats the adapter can parse safely.
-- Unknown paths, stale selectors, unsupported formats, missing tests, and ambiguous ownership must be reported as unverified or blocked; never infer that a feature is safe because Git merged cleanly.
+- Missing/stale paths, symlinks, unsupported fields, missing required tests, inconsistent ownership, and ambiguous protection declarations are blocked by registry validation; never infer that a feature is safe because Git merged cleanly.
 - A registry entry is a protection declaration, not proof that behaviour is preserved. Only passing, relevant regression tests against the exact candidate can provide that evidence.
 - Registry edits are themselves protected project changes. Record their diff in provenance and require explicit review before changing or removing existing protection.
 - Never store credentials, secrets, customer records, or live production data in the registry.
 
-The first registry release should be declarative and read-only: it may classify candidate changes and require tests, but must not rewrite source code or resolve conflicts. Registry enforcement must be implemented and tested before any adapter may claim feature-level protection.
+Registry v1 is declarative and read-only. It validates schema, stable IDs, categories, protection modes, exact existing file paths, symlink safety, ownership consistency, test identifiers, and evidence URL hygiene. It does not yet classify candidate changes, select or execute tests, enforce acceptance gates, rewrite source code, or resolve conflicts. A valid registry report therefore sets `feature_protection_enforced` to `false`. Registry-aware sync planning and acceptance enforcement must be implemented and tested before any adapter may claim automatic feature-level protection.

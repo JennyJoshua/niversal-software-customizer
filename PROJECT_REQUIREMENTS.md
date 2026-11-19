@@ -77,12 +77,21 @@ Build a reusable, configuration-driven framework that helps produce separately b
 - CI passes and provenance is recorded.
 
 
-## Customization registry and selective-sync requirements — planned
+## Customization registry v1 requirements — validation implemented
 
-- Provide a versioned, declarative registry for product customizations, mapping stable feature IDs to categories, relevant paths/structural selectors, protection modes, and targeted regression-test identifiers.
-- Model customizations at feature/behaviour level as well as file level; a file may contain both upstream-owned and product-owned logic.
-- Treat missing, stale, ambiguous, or unsupported registry mappings as unverified and block acceptance where preservation cannot be demonstrated.
-- Protect registry changes through review and provenance; never store secrets or live user data in the registry.
-- Initially use the registry for classification, reporting, and test selection only. It must not automatically rewrite code or resolve conflicts.
-- Add format-aware JSON merging only after the registry and regression-test mapping are implemented; YAML support is a later, restricted extension.
-- Structured merges must use three-way semantics, preserve unknown fields, reject ambiguous list/delete-edit conflicts, validate output, and remain inside the isolated candidate workflow.
+- Store a versioned declarative registry at `.usc/customizations.json`.
+- Require stable feature IDs, categories, purpose, protection mode, exact file paths, and explicit `custom_only` or `mixed` ownership.
+- Require test identifiers for `require_regression_tests`; require a human review note for `block_for_review`.
+- Reject stale/missing paths, symlinks, globs, absolute/traversal paths, reserved metadata paths, duplicate IDs/paths, inconsistent ownership, unsupported fields, and unsafe evidence URLs.
+- Provide the read-only CLI command `usc customization-check --path <project>` and an editor-facing JSON Schema.
+- A missing registry is `not_configured` and does not change existing project behaviour.
+- Registry v1 validates declarations only. It does not yet classify upstream changes, execute tests, enforce acceptance, or prove semantic preservation.
+
+## Future selective-sync requirements
+
+- Correlate changed upstream paths with registered features and behaviours; model mixed-ownership files explicitly.
+- Treat unknown/stale mappings and unsupported selectors as unverified or blocked.
+- Select and require targeted regression tests against the exact candidate before acceptance.
+- Protect registry edits through review and provenance; never store secrets or live user data.
+- Add JSON three-way structured merging only after registry-aware planning and regression mapping are enforced; YAML support is later and restricted.
+- Structured merges must preserve unknown fields, reject ambiguous list/delete-edit conflicts, validate output, and remain inside the isolated candidate workflow.

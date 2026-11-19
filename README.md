@@ -10,7 +10,7 @@ This is not a universal source-code converter, reverse-engineering tool, or meth
 
 ## Current status
 
-**Foundation + static inspection + rights-evidence reporting + upstream sync planning, isolated candidate integration, explicit acceptance, provenance, recovery, and GitHub Actions evidence authentication.** The tool can create a verification-only snapshot commit/ref whose tree exactly matches an uncommitted candidate, without changing the product branch or baseline. Public GitHub Actions runs can be authenticated against the exact snapshot commit/tree, pinned workflow identity, and successful jobs. Snapshot publication is deliberately a separate manual push; a real published-run-to-acceptance integration test remains outstanding. Branding transformations and production adapters are not yet implemented.
+**Foundation + static inspection + rights-evidence reporting + upstream sync planning, isolated candidate integration, explicit acceptance, provenance, recovery, GitHub Actions evidence authentication, and customization registry v1 validation.** A synthetic public-GitHub snapshot-to-authenticated-verification-to-acceptance lifecycle has passed. Snapshot publication remains a separate manual push in normal user workflows. The new customization registry command validates declarations and referenced paths only; it does not yet enforce feature-level preservation during synchronization. Branding transformations and production adapters are not yet implemented.
 
 ## First capabilities
 
@@ -21,6 +21,7 @@ python -m pip install -e ".[dev]"
 usc inspect --path ./source-project
 usc inspect --repo-url https://github.com/OWNER/REPOSITORY --revision v1.2.3
 usc licences --path ./source-project --output rights-review.json
+usc customization-check --path ./customized-repository
 usc sync-plan --path ./customized-repository --base-sha <last-imported-upstream-sha> --target-sha <new-upstream-sha>
 usc sync-candidate --path ./customized-repository --base-sha <last-imported-upstream-sha> --target-sha <new-upstream-sha> --workspace ../upstream-candidate --approve --output ../candidate-report.json
 usc sync-snapshot --path ./customized-repository --candidate-report ../candidate-report.json --push-url https://github.com/OWNER/FORK.git --output ../snapshot-report.json
@@ -34,9 +35,11 @@ A clean sync plan is only **ready for review**; it is not an integration approva
 
 Candidate creation requires explicit `--approve`, and `--rights-reviewed` when common licence/notice files changed. It creates a full, separate clone and leaves the merge uncommitted for review. The original customized repository is not changed. If preflight detects conflicts, candidate creation is blocked before a clone is made. If an unexpected conflict occurs during candidate merge, the candidate remains unresolved for manual review or discard.
 
-The new `sync-verify` command validates reviewer-supplied evidence against the exact candidate tree, including branch/commit identity, merge state, absence of unresolved conflicts and unstaged changes, tree SHA, timezone-aware reviewer timestamp, and successful test-result references. It does not execute tests or independently authenticate CI evidence. Acceptance is a separate explicit command that requires the reviewer to acknowledge this limitation and approve a fast-forward of the unchanged original branch.
+The new `sync-verify` command validates evidence against the exact candidate tree, including branch/commit identity, merge state, absence of unresolved conflicts and unstaged changes, tree SHA, timezone-aware reviewer timestamp, and successful test-result references. In authenticated mode it independently checks the completed public GitHub Actions run, exact snapshot commit/tree/parent, trusted workflow identity, and successful jobs. It does not execute project tests. Acceptance is a separate explicit command that requires approval and a clean, unchanged original branch.
 
 The rights report inventories root and nested evidence, extracts supported dependency declarations, and highlights asset and trademark review areas. It does not execute project code or determine legal permission. Every rights report remains human-review-required and blocks customization.
+
+The `customization-check` command validates `.usc/customizations.json` against registry v1 rules, checks exact referenced files and symlink safety, and reports stale or ambiguous declarations. A missing registry is reported as `not_configured` so existing projects continue unchanged. Registry validation is read-only and does not yet classify upstream changes, execute tests, or enforce acceptance.
 
 ## Principles
 

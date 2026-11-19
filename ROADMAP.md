@@ -78,8 +78,8 @@ The following status reflects the synthetic live remote test and current failure
 2. [x] Add failure-injection coverage for candidate tampering after verification, baseline/provenance mismatch, rights-review acknowledgement tampering, failed verification, and interruption before provenance/baseline commit.
 3. [x] Cover core deletion/rename cases: upstream deletion of a locally modified file blocks; deletion of an unmodified upstream-owned file integrates; unambiguous upstream rename preserves a local edit; rename/rename and delete/rename conflicts block.
 4. [ ] Clean up temporary live-test and verification refs. The available GitHub integration currently has no delete-ref operation; do not force-update or delete these refs through an unsupported path.
-5. [ ] Specify and implement a versioned declarative customization registry mapping features and behaviours to paths, protection modes, and targeted regression tests.
-6. [ ] Enforce registry checks in planning and acceptance; add fixtures for mixed-ownership files, stale mappings, unknown paths, and protected-feature regressions.
+5. [x] Implement v1 declarative customization registry schema, exact-path validation, protection-mode checks, and read-only `usc customization-check` CLI.
+6. [ ] Integrate registry entries into sync planning and acceptance; select targeted regression tests and block mixed/unknown mappings that cannot be verified.
 7. [ ] Add JSON three-way structured merge with schema validation and conservative conflict behaviour.
 8. [ ] Consider a restricted YAML merge only after JSON fidelity and conflict tests pass.
 9. [ ] Add optional scheduled upstream monitoring that creates review PRs only; never merge or advance product baselines automatically.

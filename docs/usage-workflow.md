@@ -228,3 +228,23 @@ The regular `CI` workflow runs first on the exact snapshot commit. After that pu
 5. Runs `usc sync-accept` only inside the temporary local clone, then asserts both the upstream-only improvement and custom-only feature remain present and the baseline/provenance advance correctly.
 
 The workflow has read-only repository permissions and does not push an accepted product branch. Its acceptance is a disposable integration test, not approval to update a real customized product. The marker is deliberately absent from ordinary project snapshots, so this maintainer test does not run for normal verification branches.
+
+
+## Validate a product customization registry
+
+Create `.usc/customizations.json` in the customized project, then run:
+
+```bash
+usc customization-check --path ./customized-repository
+```
+
+Registry v1 uses `schema_version: "1.0"` and a non-empty `customizations` array. Each entry declares a stable kebab-case `id`, `name`, `purpose`, a category, a protection mode, and one or more exact file paths with ownership set to `custom_only` or `mixed`.
+
+Protection modes:
+- `preserve`: only for custom-only files; it is not proof of semantic preservation.
+- `require_regression_tests`: requires one or more stable `test_ids`; v1 records these identifiers but does not execute the tests.
+- `block_for_review`: requires a human-readable `review_note`.
+
+Optional `evidence_refs` must be credential-free HTTPS URLs without query strings or fragments. Exact file paths must exist, be regular files, use POSIX separators, and must not traverse symlinks. Globs, absolute paths, `.git`, and `.usc` metadata paths are rejected. See `configuration/customizations.schema.json` for the editor-facing JSON Schema.
+
+A missing registry returns `not_configured` and does not change existing sync behaviour. A valid registry report explicitly sets `feature_protection_enforced: false`: v1 validates declarations only. Registry-aware change classification, regression-test selection, and acceptance enforcement are later implementation steps.
