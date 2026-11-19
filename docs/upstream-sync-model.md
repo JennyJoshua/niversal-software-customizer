@@ -154,6 +154,6 @@ usc sync-recover --path ./customized-repository \\
   --candidate-report ../candidate-report.json --approve
 \`\`\`
 
-Recovery checks the committed provenance and baseline against the original candidate identities and verifies the customized/upstream merge parent order. It then fast-forwards only if the original branch is still at the recorded customized SHA and clean. Repeating recovery after success returns \`already_applied\`.
+Recovery checks that the candidate worktree is clean, the committed provenance/baseline files exactly match their checked-out contents, the baseline and provenance reference the same merge commit, and the customized/upstream merge parent order is correct. It then fast-forwards only if the original branch is still at the recorded customized SHA and clean. Repeating recovery after success returns \`already_applied\`.
 
 If interruption happened before provenance and baseline were committed, recovery deliberately refuses; discard the candidate and create a fresh one. The original customized branch remains the authoritative copy.

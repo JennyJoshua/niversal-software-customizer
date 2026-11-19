@@ -505,3 +505,34 @@ def test_upstream_rename_with_unambiguous_local_edit_preserves_local_content(tmp
     assert result["status"] == "candidate_ready_for_review"
     assert (candidate / "renamed.txt").read_text(encoding="utf-8") == "local edit\n"
     assert (repo / "base.txt").read_text(encoding="utf-8") == "local edit\n"
+
+
+def test_recovery_rejects_modified_committed_provenance(tmp_path, monkeypatch):
+    import customizer.acceptance as acceptance
+    from customizer.acceptance import recover_sync_acceptance
+    from customizer.sync import SyncPlanError
+
+    repo, base, target, workspace, candidate, candidate_path, verification_path = _make_verified_candidate(tmp_path)
+    original_head = git(repo, "rev-parse", "HEAD")
+    original_git = acceptance._git
+
+    def fail_fetch(path, *args, **kwargs):
+        if Path(path).resolve() == repo.resolve() and "fetch" in args:
+            raise SyncPlanError("simulated interruption before original fast-forward")
+        return original_git(path, *args, **kwargs)
+
+    monkeypatch.setattr(acceptance, "_git", fail_fetch)
+    with pytest.raises(SyncPlanError, match="simulated interruption"):
+        acceptance.accept_sync_candidate(
+            repo, candidate_path, verification_path,
+            upstream_url="https://github.com/upstream/sample-project",
+            approved=True, evidence_reviewed=True,
+        )
+    monkeypatch.setattr(acceptance, "_git", original_git)
+    provenance_file = workspace / ".usc" / "provenance" / f"sync-{target}.json"
+    provenance_file.write_text('{"tampered": true}\n', encoding="utf-8")
+
+    with pytest.raises(SyncPlanError, match="uncommitted changes"):
+        recover_sync_acceptance(repo, candidate_path, approved=True)
+    assert git(repo, "rev-parse", "HEAD") == original_head
+    assert not (repo / "upstream.txt").exists()
