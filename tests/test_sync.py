@@ -853,3 +853,114 @@ def test_unmapped_overlapping_change_is_blocked_when_registry_exists(tmp_path):
 
     assert plan["status"] == "blocked"
     assert plan["customization_impact"]["unmapped_overlaps"] == ["base.txt"]
+
+
+def _make_registry_candidate(tmp_path):
+    import json
+    from customizer.sync import create_sync_candidate
+
+    repo, base = _registry_repo(tmp_path)
+    target = _upstream_target(repo, base)
+    candidate = create_sync_candidate(repo, base, target, tmp_path / "candidate", approved=True)
+    candidate_path = tmp_path / "candidate-report.json"
+    candidate_path.write_text(json.dumps(candidate), encoding="utf-8")
+    return repo, candidate, candidate_path, tmp_path / "candidate"
+
+
+def _registry_verification_evidence(candidate, workspace, *, test_results=None):
+    return {
+        "schema_version": "1.0",
+        "verification_status": "passed",
+        "reviewer": "Independent reviewer",
+        "verified_at": "2026-11-20T10:30:00+10:00",
+        "verification_source": "CI run 789",
+        "candidate_tree_sha": git(workspace, "write-tree"),
+        "rights_reviewed": False,
+        "test_results": test_results if test_results is not None else [{
+            "test_id": "feature-regression",
+            "name": "Feature regression test",
+            "passed": True,
+            "evidence_ref": "CI run 789",
+        }],
+    }
+
+
+def test_registry_verification_requires_every_declared_test_id(tmp_path):
+    import json
+    from customizer.verification import create_sync_verification
+
+    _, candidate, candidate_path, workspace = _make_registry_candidate(tmp_path)
+    evidence_path = tmp_path / "evidence.json"
+    evidence_path.write_text(json.dumps(_registry_verification_evidence(
+        candidate, workspace, test_results=[{
+            "test_id": "unrelated-test",
+            "name": "Unrelated test",
+            "passed": True,
+            "evidence_ref": "CI run 789",
+        }],
+    )), encoding="utf-8")
+
+    with pytest.raises(SyncPlanError, match="Required customization regression test IDs are missing"):
+        create_sync_verification(candidate_path, evidence_path)
+
+
+def test_registry_verification_records_exact_required_test_ids(tmp_path):
+    import json
+    from customizer.verification import create_sync_verification
+
+    _, candidate, candidate_path, workspace = _make_registry_candidate(tmp_path)
+    evidence_path = tmp_path / "evidence.json"
+    evidence_path.write_text(json.dumps(_registry_verification_evidence(candidate, workspace)), encoding="utf-8")
+
+    result = create_sync_verification(candidate_path, evidence_path)
+
+    assert result["status"] == "verification_passed"
+    assert result["required_customization_test_ids"] == ["feature-regression"]
+    assert result["verified_customization_test_ids"] == ["feature-regression"]
+
+
+def test_registry_acceptance_rejects_missing_verified_test_evidence(tmp_path):
+    import json
+    from customizer.acceptance import accept_sync_candidate
+    from customizer.verification import create_sync_verification
+
+    repo, candidate, candidate_path, workspace = _make_registry_candidate(tmp_path)
+    evidence_path = tmp_path / "evidence.json"
+    evidence_path.write_text(json.dumps(_registry_verification_evidence(candidate, workspace)), encoding="utf-8")
+    verification = create_sync_verification(candidate_path, evidence_path)
+    verification["verified_customization_test_ids"] = []
+    verification_path = tmp_path / "verification-report.json"
+    verification_path.write_text(json.dumps(verification), encoding="utf-8")
+    original_head = git(repo, "rev-parse", "HEAD")
+
+    with pytest.raises(SyncPlanError, match="does not prove every currently required"):
+        accept_sync_candidate(
+            repo, candidate_path, verification_path,
+            upstream_url="https://github.com/upstream/sample-project",
+            approved=True, evidence_reviewed=True,
+        )
+
+    assert git(repo, "rev-parse", "HEAD") == original_head
+    assert not (repo / "upstream.txt").exists()
+
+
+def test_registry_acceptance_succeeds_only_with_exact_required_test_evidence(tmp_path):
+    import json
+    from customizer.acceptance import accept_sync_candidate
+    from customizer.verification import create_sync_verification
+
+    repo, candidate, candidate_path, workspace = _make_registry_candidate(tmp_path)
+    evidence_path = tmp_path / "evidence.json"
+    evidence_path.write_text(json.dumps(_registry_verification_evidence(candidate, workspace)), encoding="utf-8")
+    verification = create_sync_verification(candidate_path, evidence_path)
+    verification_path = tmp_path / "verification-report.json"
+    verification_path.write_text(json.dumps(verification), encoding="utf-8")
+
+    result = accept_sync_candidate(
+        repo, candidate_path, verification_path,
+        upstream_url="https://github.com/upstream/sample-project",
+        approved=True, evidence_reviewed=True,
+    )
+
+    assert result["status"] == "accepted"
+    assert (repo / "upstream.txt").read_text(encoding="utf-8") == "upstream feature update\n"
