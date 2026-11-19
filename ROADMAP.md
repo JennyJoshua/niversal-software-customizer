@@ -68,3 +68,20 @@
 - [ ] Consider Android/Windows only after toolchains and rights requirements are validated.
 
 A phase is complete only when its acceptance criteria are tested, documented, and reflected in GitHub Issues. Planned capabilities must not be described as implemented.
+
+
+## Supplementary upstream-sync improvements — ordered after Phase 3 live validation
+
+These items are planned, not implemented. They do not replace or postpone the remaining Phase 3 acceptance work.
+
+1. [ ] Complete a real remote verification-snapshot run through authenticated GitHub Actions verification and candidate acceptance; document temporary-ref cleanup.
+2. [ ] Complete failure-injection coverage for candidate tampering, baseline/provenance mismatch, rights-file changes, failed verification, and pre-provenance interruption.
+3. [ ] Specify and implement a versioned declarative customization registry that maps features and behaviours to paths, protection modes, and targeted regression tests.
+4. [ ] Enforce registry checks in planning and acceptance; add fixtures for mixed-ownership files, stale mappings, unknown paths, and protected-feature regressions.
+5. [ ] Add JSON three-way structured merge with schema validation and conservative conflict behaviour.
+6. [ ] Consider a restricted YAML merge only after JSON fidelity and conflict tests pass.
+7. [ ] Add optional scheduled upstream monitoring that creates review PRs only; never merge or advance product baselines automatically.
+8. [ ] Consider AI-assisted conflict explanations as advisory output only. AI must not choose or apply a resolution, waive a protection rule, or approve a candidate.
+9. [ ] Defer GitHub App fan-out/distribution until the local candidate lifecycle, permissions model, and recovery behaviour are proven.
+
+The reference-project review is recorded in `docs/reference-implementations.md`. Reuse concepts only; do not copy code until each source file's licence, attribution, dependencies, security implications, and compatibility have been reviewed.

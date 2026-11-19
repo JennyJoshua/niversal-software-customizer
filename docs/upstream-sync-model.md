@@ -157,3 +157,30 @@ usc sync-recover --path ./customized-repository \\
 Recovery checks that the candidate worktree is clean, the committed provenance/baseline files exactly match their checked-out contents, the baseline and provenance reference the same merge commit, and the customized/upstream merge parent order is correct. It then fast-forwards only if the original branch is still at the recorded customized SHA and clean. Repeating recovery after success returns \`already_applied\`.
 
 If interruption happened before provenance and baseline were committed, recovery deliberately refuses; discard the candidate and create a fresh one. The original customized branch remains the authoritative copy.
+
+
+## Selective synchronization and structured-file merge — future specification
+
+The current implementation classifies Git paths and uses Git's three-way merge. It does not yet understand feature ownership inside a file or perform format-aware merges. These are separate future capabilities and must not be described as implemented.
+
+### Selective synchronization
+
+Use the machine-readable customization registry defined in `docs/custom-feature-protection-policy.md` to add context to path-level planning. The registry must not replace Git history or the three-way merge base. It should identify:
+- Which custom features/configurations/contracts are touched by each changed path.
+- Whether the changed area requires preservation checks, targeted regression tests, or human resolution.
+- Cases where upstream and custom code share a file and therefore cannot safely be handled by whole-file exclusion or replacement.
+
+Do not introduce blanket ignore/exclude rules as the primary protection mechanism. Excluding an entire mixed-ownership file can prevent upstream security fixes; replacing it wholesale can erase custom behaviour. If the registry cannot confidently map a change, mark it unknown and block acceptance pending review.
+
+### Structured merge
+
+A later adapter may support format-aware three-way merges for structured configuration files. Implement JSON first, then a deliberately limited YAML subset only after parser and round-trip behaviour is proven. Each merge must:
+- Parse base, upstream, and customized versions independently and reject invalid or ambiguous input.
+- Merge only explicitly supported object/key structures using the three-way base.
+- Treat conflicting scalar edits, delete-versus-edit, duplicate keys, unsupported YAML features, and ambiguous list edits as conflicts.
+- Preserve custom-only keys and upstream-only keys where the merge is unambiguous.
+- Avoid silently changing comments, ordering, formatting, unknown fields, or semantics; if the chosen parser cannot preserve required source fidelity, emit a reviewable conflict/diff instead of rewriting.
+- Validate the merged result against the relevant schema and project-specific tests.
+- Run only in the isolated candidate and retain the existing explicit verification and acceptance gates.
+
+No format-aware merge may bypass protected-feature checks, rights review, candidate verification, provenance, or human approval. Dependency declarations and package manifests must not receive special merge rules until their ecosystem-specific semantics and scripts/side effects are covered by tests.

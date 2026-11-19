@@ -56,3 +56,12 @@ Treat source code, manifests, scripts, and metadata as untrusted. Static inspect
 - .github/workflows/: CI
 
 Do not add Windows, Android, Python-package, or Node-specific adapters until each has a real fixture, documented rules, and automated tests.
+
+
+## Customization registry and selective synchronization — planned
+
+Add a declarative customization registry as a policy input to the sync planner. The registry maps stable feature IDs to categories, implementation paths or supported structural selectors, protection modes, and targeted regression-test identifiers. It supplements Git's base/upstream/customized comparison; it does not replace that comparison or become a whole-file exclusion list.
+
+The planner should correlate changed paths with registered custom features and report affected features, required tests, unknown mappings, and blocked conditions. A path shared by upstream and custom functionality must be treated as mixed ownership. If safe attribution is uncertain, stop for review rather than dropping upstream changes or overwriting local behaviour.
+
+Only after registry enforcement and preservation tests are reliable should the architecture add structured merges. JSON is the first candidate format; YAML is deferred until a safe subset and source-fidelity guarantees are demonstrated. Structured merge adapters must be isolated, three-way, schema-validated, and subordinate to the same verification, rights, provenance, and approval gates as ordinary sync.
