@@ -34,8 +34,12 @@ def _safe_relative_file(root: Path, value: Any, *, label: str, errors: list[str]
     if not isinstance(value, str) or not value or value.strip() != value:
         _error(errors, f"{label} must be a non-empty, trimmed relative path.")
         return None
-    if "\\" in value or any(char in value for char in _GLOB_CHARS):
-        _error(errors, f"{label} must use exact POSIX paths; globs and backslashes are not supported: {value!r}.")
+    raw_parts = value.split("/")
+    if "\\" in value or "\x00" in value or any(char in value for char in _GLOB_CHARS):
+        _error(errors, f"{label} must use exact POSIX paths; globs, backslashes, and NUL bytes are not supported: {value!r}.")
+        return None
+    if any(part in {"", ".", ".."} for part in raw_parts):
+        _error(errors, f"{label} is not a normalized repository-relative path: {value!r}.")
         return None
     pure = PurePosixPath(value)
     if pure.is_absolute() or not pure.parts or any(part in {"", ".", ".."} for part in pure.parts):
@@ -192,10 +196,10 @@ def inspect_customization_registry(repository: str | Path) -> dict[str, Any]:
                 _error(errors, f"{label}.{field} must be a non-empty, trimmed string.")
 
         category = entry.get("category")
-        if category not in _CATEGORIES:
+        if not isinstance(category, str) or category not in _CATEGORIES:
             _error(errors, f"{label}.category must be one of: {', '.join(sorted(_CATEGORIES))}.")
         mode = entry.get("protection_mode")
-        if mode not in _PROTECTION_MODES:
+        if not isinstance(mode, str) or mode not in _PROTECTION_MODES:
             _error(errors, f"{label}.protection_mode must be one of: {', '.join(sorted(_PROTECTION_MODES))}.")
 
         paths = entry.get("paths")
@@ -213,7 +217,7 @@ def inspect_customization_registry(repository: str | Path) -> dict[str, Any]:
             _unknown_keys(path_item, {"path", "ownership"}, label=path_label, errors=errors)
             normalized = _safe_relative_file(root, path_item.get("path"), label=f"{path_label}.path", errors=errors)
             ownership = path_item.get("ownership")
-            if ownership not in _OWNERSHIP:
+            if not isinstance(ownership, str) or ownership not in _OWNERSHIP:
                 _error(errors, f"{path_label}.ownership must be 'custom_only' or 'mixed'.")
                 continue
             if normalized is None:
