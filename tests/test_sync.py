@@ -735,3 +735,93 @@ def test_upstream_deletion_conflicts_with_custom_rename(tmp_path):
     assert plan["merge_conflicts"]
     assert git(repo, "rev-parse", "HEAD") == customized
     assert (repo / "custom-renamed.txt").read_text(encoding="utf-8") == "base\n"
+
+
+def _registry_repo(tmp_path, *, ownership="mixed", protection_mode="require_regression_tests"):
+    import json
+
+    repo, _ = init_repo(tmp_path)
+    (repo / "feature.py").write_text("base feature\n", encoding="utf-8")
+    (repo / ".usc").mkdir()
+    (repo / ".usc" / "customizations.json").write_text(json.dumps({
+        "schema_version": "1.0",
+        "project_id": "sync-test",
+        "customizations": [{
+            "id": "custom-feature",
+            "name": "Custom feature",
+            "purpose": "Protect a project-specific feature",
+            "category": "feature_workflow",
+            "protection_mode": protection_mode,
+            "paths": [{"path": "feature.py", "ownership": ownership}],
+            "test_ids": ["tests/test_feature.py"] if protection_mode == "require_regression_tests" else [],
+            "review_note": "Human review required" if protection_mode == "block_for_review" else None,
+        }],
+    }), encoding="utf-8")
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "add customization registry")
+    base = git(repo, "rev-parse", "HEAD")
+    return repo, base
+
+
+def _upstream_target(repo, base, *, delete=False):
+    if delete:
+        (repo / "feature.py").unlink()
+        git(repo, "add", "-u", "feature.py")
+    else:
+        (repo / "feature.py").write_text("upstream feature update\n", encoding="utf-8")
+        git(repo, "add", "feature.py")
+    git(repo, "commit", "-qm", "upstream feature change")
+    target = git(repo, "rev-parse", "HEAD")
+    git(repo, "branch", "upstream/registry-test", target)
+    git(repo, "reset", "--hard", base)
+    return target
+
+
+def test_registry_required_tests_are_reported_in_sync_plan(tmp_path):
+    repo, base = _registry_repo(tmp_path)
+    target = _upstream_target(repo, base)
+
+    plan = create_sync_plan(repo, base, target)
+
+    assert plan["status"] == "ready_for_review"
+    assert plan["customization_impact"]["status"] == "review_required"
+    assert plan["customization_impact"]["affected_customizations"][0]["id"] == "custom-feature"
+    assert plan["required_customization_test_ids"] == ["tests/test_feature.py"]
+    assert plan["integration_performed"] is False
+
+
+def test_upstream_change_to_custom_only_path_blocks_sync_plan(tmp_path):
+    repo, base = _registry_repo(tmp_path, ownership="custom_only", protection_mode="preserve")
+    target = _upstream_target(repo, base)
+
+    plan = create_sync_plan(repo, base, target)
+
+    assert plan["status"] == "blocked"
+    assert any("custom-only path" in reason for reason in plan["blocked_reasons"])
+
+
+def test_upstream_deletion_of_mixed_customization_path_blocks_sync_plan(tmp_path):
+    repo, base = _registry_repo(tmp_path)
+    target = _upstream_target(repo, base, delete=True)
+
+    plan = create_sync_plan(repo, base, target)
+
+    assert plan["status"] == "blocked"
+    assert any("deletes mixed-ownership path" in reason for reason in plan["blocked_reasons"])
+
+
+def test_invalid_registry_blocks_sync_plan(tmp_path):
+    repo, base = _registry_repo(tmp_path)
+    registry = repo / ".usc" / "customizations.json"
+    registry.write_text("{invalid json", encoding="utf-8")
+    git(repo, "add", ".usc/customizations.json")
+    git(repo, "commit", "-qm", "corrupt registry")
+    customized = git(repo, "rev-parse", "HEAD")
+    target = _upstream_target(repo, base)
+    # Restore the customized branch to the registry-corrupt commit while retaining the upstream target.
+    git(repo, "reset", "--hard", customized)
+
+    plan = create_sync_plan(repo, base, target)
+
+    assert plan["status"] == "blocked"
+    assert plan["customization_impact"]["registry_status"] == "blocked"
