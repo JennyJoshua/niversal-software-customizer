@@ -32,15 +32,11 @@ The CLI command is:
 usc sync-plan --path ./customized-repository --base-sha <base-sha> --target-sha <target-sha>
 ```
 
-The planner:
-- Requires full commit SHAs, complete local history, a clean working tree, and the base as the exact merge base of customized HEAD and upstream target.
-- Rejects repository-local custom merge/filter drivers and external filesystem monitors.
-- Reports upstream and local changed paths, path overlaps, and upstream rights/notice file changes.
-- Uses `git merge-tree --write-tree` for a non-mutating three-way merge preflight.
-- Marks a plan blocked when Git reports merge conflicts.
-- Does not fetch, checkout, merge, write files, update refs, execute hooks, or run project scripts.
+The planner requires full commit SHAs, complete local history, a clean working tree, and the base as the exact merge base of customized HEAD and upstream target. It rejects repository-local custom merge/filter drivers and external filesystem monitors, reports upstream/local path changes and rights/notice changes, and runs a non-mutating Git three-way merge preflight.
 
-A `ready_for_review` status is not approval and not proof of semantic compatibility. It only means Git's preflight found no merge conflict. The planner is not an integration acceptance engine.
+When `.usc/customizations.json` is present, the planner also validates the registry and reports affected customizations, path ownership, protection modes, and required regression-test IDs. It blocks invalid registries, upstream edits to registered custom-only paths, protected mixed-ownership deletions, affected `block_for_review` entries, and unmapped overlapping changes. A missing registry remains backward-compatible (`not_configured`).
+
+Planning does not fetch, checkout, merge, write files, update refs, execute hooks, or run project scripts. A `ready_for_review` status is not approval or proof of semantic compatibility.
 
 ## Current implementation: isolated candidate creation
 
