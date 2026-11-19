@@ -58,7 +58,7 @@ def verify(monkeypatch, payloads):
     import customizer.github_actions as module
 
     def fake_urlopen(request, timeout):
-        path = urlparse(request.full_url).path
+        path = urlparse(request.full_url).path.removeprefix("/repos/acme/fork")
         query = urlparse(request.full_url).query
         key = path + (f"?{query}" if query else "")
         if key not in payloads:
