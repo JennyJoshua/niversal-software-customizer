@@ -184,3 +184,10 @@ A later adapter may support format-aware three-way merges for structured configu
 - Run only in the isolated candidate and retain the existing explicit verification and acceptance gates.
 
 No format-aware merge may bypass protected-feature checks, rights review, candidate verification, provenance, or human approval. Dependency declarations and package manifests must not receive special merge rules until their ecosystem-specific semantics and scripts/side effects are covered by tests.
+
+
+## Maintainer live end-to-end validation fixture
+
+A dedicated, marker-gated GitHub Actions fixture exercises the complete remote evidence path. A push to a `usc-verify/**` branch first runs the trusted `CI` workflow. When that run has completed successfully, the separate `USC Live Sync Acceptance` workflow checks out the exact snapshot commit, creates a fresh local customized clone from fixture refs, recreates the candidate, and requires its index tree to equal the published snapshot tree.
+
+The second workflow then invokes the normal authenticated `sync-verify` implementation against the completed CI push run and invokes `sync-accept` only in its disposable local clone. It asserts that the custom-only feature and upstream-only change both survive and that baseline/provenance point to the accepted upstream target. It never pushes the accepted product branch. This is a maintainer smoke test using synthetic fixtures; it does not replace real customer-project testing or semantic regression coverage.
