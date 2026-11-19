@@ -1,0 +1,1 @@
+This file represents an upstream-only improvement in the live acceptance fixture.
