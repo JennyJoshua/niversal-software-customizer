@@ -103,3 +103,19 @@ Registry rules:
 - Never store credentials, secrets, customer records, or live production data in the registry.
 
 Registry v1 is declarative and read-only. It validates schema, stable IDs, categories, protection modes, exact existing file paths, symlink safety, ownership consistency, test identifiers, and evidence URL hygiene. It does not yet classify candidate changes, select or execute tests, enforce acceptance gates, rewrite source code, or resolve conflicts. A valid registry report therefore sets `feature_protection_enforced` to `false`. Registry-aware sync planning and acceptance enforcement must be implemented and tested before any adapter may claim automatic feature-level protection.
+
+
+## Registry-aware sync planning — implemented in the current milestone
+
+The read-only sync planner now evaluates upstream path changes against a valid customization registry and includes a `customization_impact` report.
+
+- Affected customization IDs, protection modes, changed paths, ownership declarations, and required regression test IDs are reported.
+- An invalid or unreadable registry blocks the plan.
+- An upstream edit to a registered `custom_only` path blocks the plan for manual reconciliation.
+- An upstream deletion of a registered mixed-ownership path blocks the plan.
+- An overlapping upstream/local change not mapped to a registered customization blocks the plan for human review.
+- A `block_for_review` entry blocks planning when affected.
+- `require_regression_tests` entries contribute their test IDs to the plan and isolated candidate report.
+- A missing registry remains backward-compatible and is reported as `not_configured`.
+
+This is impact classification, not proof of behavioural preservation. The planner does not execute tests. Candidate verification and acceptance must still be extended to bind every required test ID to successful evidence for the exact candidate tree before USC can claim that registry-required tests are enforced. Until that follow-up is complete, the feature protection enforcement flag remains false.
