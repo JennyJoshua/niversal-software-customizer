@@ -212,6 +212,6 @@ usc sync-verify --candidate-report ../candidate-report.json \
   --output ../verification-report.json
 ```
 
-The workflow ID and workflow-file blob SHA are trust anchors and must be obtained from a trusted repository revision and maintained deliberately. The current CI workflow ID is 422317206; obtain the current workflow blob SHA from the trusted fork revision after the snapshot-branch trigger change is merged. If the workflow file changes, authentication fails until a human reviews and updates the trust anchor. The authenticated mode currently supports public GitHub repositories; private-repository token handling is not included.
+The workflow ID and workflow-file blob SHA are trust anchors and must be obtained from a trusted repository revision and maintained deliberately. The current CI workflow ID is 422317206 and the trusted workflow-file blob SHA on main is `0752aaa0aea0d75a300ed9782761bc3012f6a594`. If the workflow file changes, review the change and update the pinned blob SHA deliberately. If the workflow file changes, authentication fails until a human reviews and updates the trust anchor. The authenticated mode currently supports public GitHub repositories; private-repository token handling is not included.
 
 Even authenticated CI does not authenticate the human reviewer or legal/rights acknowledgement. Explicit candidate approval remains mandatory.
