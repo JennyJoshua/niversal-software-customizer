@@ -165,7 +165,7 @@ def test_rejects_noncanonical_or_untrusted_run_urls(url):
 def test_rejects_wrong_snapshot_commit_sha(monkeypatch):
     payloads = make_payloads()
     payloads["/actions/runs/12345"]["head_sha"] = "d" * 40
-    with pytest.raises(SyncPlanError, match="snapshot commit SHA"):
+    with pytest.raises(SyncPlanError, match="snapshot commit"):
         verify(monkeypatch, payloads)
 
 

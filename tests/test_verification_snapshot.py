@@ -88,7 +88,8 @@ def test_snapshot_creates_exact_tree_commit_without_changing_product_or_candidat
     assert git(candidate, "rev-parse", "MERGE_HEAD") == merge_head
     assert git(candidate, "status", "--porcelain=v1", "--untracked-files=all") == status
     assert snapshot["push_performed"] is False
-    assert "git push" in snapshot["push_command"]
+    assert snapshot["push_command"].split()[0] == "git"
+    assert " push " in snapshot["push_command"]
 
 
 @pytest.mark.parametrize(
@@ -117,7 +118,7 @@ def test_snapshot_rejects_changed_original_branch(tmp_path):
 def test_snapshot_rejects_candidate_with_unstaged_changes(tmp_path):
     repo, candidate, report, report_path, _ = make_candidate(tmp_path)
     (candidate / "tampered.txt").write_text("tampered\n", encoding="utf-8")
-    with pytest.raises(SyncPlanError, match="unstaged file changes"):
+    with pytest.raises(SyncPlanError, match="untracked or unstaged changes"):
         create_sync_verification_snapshot(repo, report_path, push_url="https://github.com/acme/fork.git")
 
 
