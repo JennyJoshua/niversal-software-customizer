@@ -70,18 +70,30 @@
 A phase is complete only when its acceptance criteria are tested, documented, and reflected in GitHub Issues. Planned capabilities must not be described as implemented.
 
 
-## Supplementary upstream-sync improvements — ordered after Phase 3 live validation
+## Supplementary upstream-sync improvements — updated after live validation
 
-These items are planned, not implemented. They do not replace or postpone the remaining Phase 3 acceptance work.
+The following status reflects the synthetic live remote test and current failure-injection coverage. It does not claim arbitrary customer applications are semantically protected.
 
-1. [ ] Complete a real remote verification-snapshot run through authenticated GitHub Actions verification and candidate acceptance; document temporary-ref cleanup.
-2. [ ] Complete failure-injection coverage for candidate tampering, baseline/provenance mismatch, rights-file changes, failed verification, and pre-provenance interruption.
-3. [ ] Specify and implement a versioned declarative customization registry that maps features and behaviours to paths, protection modes, and targeted regression tests.
-4. [ ] Enforce registry checks in planning and acceptance; add fixtures for mixed-ownership files, stale mappings, unknown paths, and protected-feature regressions.
-5. [ ] Add JSON three-way structured merge with schema validation and conservative conflict behaviour.
-6. [ ] Consider a restricted YAML merge only after JSON fidelity and conflict tests pass.
-7. [ ] Add optional scheduled upstream monitoring that creates review PRs only; never merge or advance product baselines automatically.
-8. [ ] Consider AI-assisted conflict explanations as advisory output only. AI must not choose or apply a resolution, waive a protection rule, or approve a candidate.
-9. [ ] Defer GitHub App fan-out/distribution until the local candidate lifecycle, permissions model, and recovery behaviour are proven.
+1. [x] Run a real public-GitHub verification snapshot through completed CI, authenticated `sync-verify`, and `sync-accept` in an isolated local clone. The test confirmed the exact candidate tree, one-parent snapshot, preserved custom-only feature, upstream-only improvement, and baseline/provenance advancement.
+2. [x] Add failure-injection coverage for candidate tampering after verification, baseline/provenance mismatch, rights-review acknowledgement tampering, failed verification, and interruption before provenance/baseline commit.
+3. [x] Cover core deletion/rename cases: upstream deletion of a locally modified file blocks; deletion of an unmodified upstream-owned file integrates; unambiguous upstream rename preserves a local edit; rename/rename and delete/rename conflicts block.
+4. [ ] Clean up temporary live-test and verification refs. The available GitHub integration currently has no delete-ref operation; do not force-update or delete these refs through an unsupported path.
+5. [ ] Specify and implement a versioned declarative customization registry mapping features and behaviours to paths, protection modes, and targeted regression tests.
+6. [ ] Enforce registry checks in planning and acceptance; add fixtures for mixed-ownership files, stale mappings, unknown paths, and protected-feature regressions.
+7. [ ] Add JSON three-way structured merge with schema validation and conservative conflict behaviour.
+8. [ ] Consider a restricted YAML merge only after JSON fidelity and conflict tests pass.
+9. [ ] Add optional scheduled upstream monitoring that creates review PRs only; never merge or advance product baselines automatically.
+10. [ ] Consider AI-assisted conflict explanations as advisory output only. AI must not choose or apply a resolution, waive a protection rule, or approve a candidate.
+11. [ ] Defer GitHub App fan-out/distribution until the local candidate lifecycle, permissions model, and recovery behaviour are proven.
+
+### Live validation evidence
+
+- Snapshot commit: `04f4f14b01be8be97bf361490c7167bc3ec0722c`
+- Completed authenticated CI push run: https://github.com/JennyJoshua/niversal-software-customizer/actions/runs/44633531926
+- Follow-on live acceptance workflow: https://github.com/JennyJoshua/niversal-software-customizer/actions/runs/44633580230
+- Failure-matrix PR #21: https://github.com/JennyJoshua/niversal-software-customizer/pull/21
+- Rights/deletion PR #22: https://github.com/JennyJoshua/niversal-software-customizer/pull/22
+
+The live fixture uses synthetic files in this repository and accepts only inside a temporary local clone. No product remote branch was pushed. This proves the remote evidence-to-acceptance mechanics for the tested scenario, not semantic compatibility for arbitrary applications.
 
 The reference-project review is recorded in `docs/reference-implementations.md`. Reuse concepts only; do not copy code until each source file's licence, attribution, dependencies, security implications, and compatibility have been reviewed.
