@@ -9,6 +9,20 @@ import pytest
 from customizer.sync import SyncPlanError, create_sync_candidate
 from customizer.verification_snapshot import create_sync_verification_snapshot
 
+class FakeResponse:
+    def __init__(self, payload):
+        self.payload = json.dumps(payload).encode("utf-8")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def read(self):
+        return self.payload
+
+
 
 def git(path: Path, *args: str) -> str:
     result = subprocess.run(["git", *args], cwd=path, text=True, capture_output=True, check=True)
