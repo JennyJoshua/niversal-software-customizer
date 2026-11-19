@@ -415,3 +415,87 @@ def test_acceptance_requires_explicit_approval_and_evidence_review(tmp_path):
             approved=True,
         )
     assert git(repo, "status", "--porcelain") == ""
+
+
+def test_recovery_finishes_fast_forward_after_provenance_commit(tmp_path, monkeypatch):
+    import json
+    import customizer.acceptance as acceptance
+    from customizer.sync import create_sync_candidate
+    from customizer.verification import create_sync_verification
+
+    repo, base = init_repo(tmp_path)
+    target = commit_file(repo, "upstream.txt", "upstream update\n", "upstream change")
+    git(repo, "branch", "upstream/test", target)
+    git(repo, "reset", "--hard", base)
+    commit_file(repo, "custom.txt", "custom work\n", "custom change")
+    workspace = tmp_path / "candidate"
+    candidate = create_sync_candidate(repo, base, target, workspace, approved=True)
+    candidate_report = tmp_path / "candidate-report.json"
+    candidate_report.write_text(json.dumps(candidate), encoding="utf-8")
+    evidence = tmp_path / "evidence.json"
+    evidence.write_text(json.dumps({
+        "schema_version": "1.0", "verification_status": "passed",
+        "reviewer": "Reviewer", "verified_at": "2026-11-19T10:30:00+10:00",
+        "verification_source": "CI run 123", "candidate_tree_sha": git(workspace, "write-tree"),
+        "rights_reviewed": False,
+        "test_results": [{"name": "regression", "passed": True, "evidence_ref": "CI run 123"}]
+    }), encoding="utf-8")
+    verification = tmp_path / "verification.json"
+    verification.write_text(json.dumps(create_sync_verification(candidate_report, evidence)), encoding="utf-8")
+    original_head = git(repo, "rev-parse", "HEAD")
+    original_git = acceptance._git
+
+    def fail_fetch(path, *args, **kwargs):
+        if Path(path).resolve() == repo.resolve() and "fetch" in args:
+            raise SyncPlanError("simulated interruption before original fast-forward")
+        return original_git(path, *args, **kwargs)
+
+    monkeypatch.setattr(acceptance, "_git", fail_fetch)
+    with pytest.raises(SyncPlanError, match="simulated interruption"):
+        acceptance.accept_sync_candidate(
+            repo, candidate_report, verification,
+            upstream_url="https://github.com/upstream/sample-project",
+            approved=True, evidence_reviewed=True,
+        )
+    assert git(repo, "rev-parse", "HEAD") == original_head
+    assert not (repo / "upstream.txt").exists()
+
+    monkeypatch.setattr(acceptance, "_git", original_git)
+    recovered = acceptance.recover_sync_acceptance(repo, candidate_report, approved=True)
+    assert recovered["status"] == "recovered"
+    assert git(repo, "rev-parse", "HEAD") == recovered["accepted_commit_sha"]
+    assert (repo / "upstream.txt").read_text(encoding="utf-8") == "upstream update\n"
+    assert (repo / "custom.txt").read_text(encoding="utf-8") == "custom work\n"
+    assert git(repo, "status", "--porcelain") == ""
+    repeated = acceptance.recover_sync_acceptance(repo, candidate_report, approved=True)
+    assert repeated["status"] == "already_applied"
+
+
+def test_upstream_deletion_of_locally_modified_file_blocks_sync(tmp_path):
+    repo, base = init_repo(tmp_path)
+    (repo / "tracked.txt").write_text("base file\n", encoding="utf-8")
+    git(repo, "add", "tracked.txt")
+    git(repo, "commit", "-qm", "add tracked file")
+    base = git(repo, "rev-parse", "HEAD")
+    git(repo, "rm", "tracked.txt")
+    git(repo, "commit", "-qm", "upstream removes file")
+    target = git(repo, "rev-parse", "HEAD")
+    git(repo, "reset", "--hard", base)
+    commit_file(repo, "tracked.txt", "custom local content\n", "customize file")
+    plan = create_sync_plan(repo, base, target)
+    assert plan["status"] == "blocked"
+    assert plan["merge_conflicts"]
+    assert (repo / "tracked.txt").read_text(encoding="utf-8") == "custom local content\n"
+
+
+def test_upstream_rename_with_local_edit_blocks_integration(tmp_path):
+    repo, base = init_repo(tmp_path)
+    git(repo, "mv", "base.txt", "renamed.txt")
+    git(repo, "commit", "-qm", "upstream rename")
+    target = git(repo, "rev-parse", "HEAD")
+    git(repo, "reset", "--hard", base)
+    commit_file(repo, "base.txt", "local edit\n", "local edit")
+    plan = create_sync_plan(repo, base, target)
+    assert plan["status"] == "blocked"
+    assert plan["merge_conflicts"]
+    assert (repo / "base.txt").read_text(encoding="utf-8") == "local edit\n"

@@ -73,7 +73,7 @@ A deterministic, read-only plan reports:
 - Changes to common licence/notice filenames requiring renewed rights review.
 - Whether integration approval is still required and whether integration occurred.
 
-## Integration acceptance rules for the next implementation batch
+## Integration acceptance rules
 
 - Inspect the complete candidate diff against both the upstream target and original customized state.
 - Re-check rights evidence when upstream changes affect licences, dependencies, assets, fonts, icons, datasets, or trademarks.
@@ -99,11 +99,6 @@ Missing baseline, shallow/incomplete history, unsupported Git state, unsafe path
 9. Candidate creation requires explicit approval and rights-review acknowledgement when applicable.
 10. Successful acceptance records the new upstream baseline and complete provenance.
 
-## Delivery status
-
-Read-only planning and isolated, uncommitted candidate creation are implemented. Candidate verification, acceptance, recovery automation, and final provenance remain future work. Do not describe the full upstream update workflow as complete until those capabilities pass their tests.
-
-
 ## Current implementation: candidate evidence validation
 
 The command is:
@@ -123,11 +118,6 @@ The candidate report is emitted by `sync-candidate --output ../candidate-report.
 The verifier re-checks candidate branch, original customized HEAD, upstream MERGE_HEAD, unresolved conflicts, unstaged/untracked changes, and exact tree SHA. Stale or modified candidates and failed test evidence are blocked. It never runs source scripts or tests.
 
 **Trust limitation:** evidence is reviewer-supplied JSON. The verifier checks its structure and binds it to the candidate tree, but does not independently authenticate the CI provider, log URLs, reviewer identity, or test execution. The report explicitly sets `evidence_authenticated=false`. A trusted CI evidence policy is still required before automatic acceptance.
-
-## Acceptance remains outstanding
-
-A `verification_passed` report does not change the original customized repository. The next batch must add explicit acceptance with compare-and-swap protection against an original HEAD change, ensure the candidate still matches the verified tree, commit the merge with the customized commit as first parent and upstream target as second parent, advance the upstream baseline only after success, and write complete provenance. Failure must leave the original customized ref and baseline unchanged.
-
 
 ## Current implementation: explicit acceptance and baseline advancement
 
@@ -153,3 +143,17 @@ Acceptance:
 If a pre-update gate fails, the original branch and baseline remain unchanged. Acceptance does not run project scripts or tests. The baseline and provenance become part of the original branch only when the fast-forward succeeds.
 
 The current verifier still trusts reviewer-supplied evidence structure and references; it does not independently authenticate GitHub Actions. Automated candidate discard/interruption recovery and a trusted CI attestation policy remain outstanding.
+
+
+## Recovery after an interrupted acceptance
+
+If the candidate's merge commit, provenance commit, and baseline file were committed but the original branch was not advanced, use:
+
+\`\`\`bash
+usc sync-recover --path ./customized-repository \\
+  --candidate-report ../candidate-report.json --approve
+\`\`\`
+
+Recovery checks the committed provenance and baseline against the original candidate identities and verifies the customized/upstream merge parent order. It then fast-forwards only if the original branch is still at the recorded customized SHA and clean. Repeating recovery after success returns \`already_applied\`.
+
+If interruption happened before provenance and baseline were committed, recovery deliberately refuses; discard the candidate and create a fresh one. The original customized branch remains the authoritative copy.

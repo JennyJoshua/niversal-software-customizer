@@ -10,7 +10,7 @@ from .inspector import InspectionError, inspect_github_repository, inspect_repos
 from .licensing import LicenceScanError, scan_licence_evidence
 from .sync import SyncPlanError, create_sync_candidate, create_sync_plan
 from .verification import create_sync_verification
-from .acceptance import accept_sync_candidate
+from .acceptance import accept_sync_candidate, recover_sync_acceptance
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -76,6 +76,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     accept_parser.add_argument("--output", help="Write acceptance report outside both repositories.")
 
+    recover_parser = subparsers.add_parser("sync-recover", help="Resume fast-forward after candidate provenance was committed.")
+    recover_parser.add_argument("--path", required=True, help="Original customized Git repository.")
+    recover_parser.add_argument("--candidate-report", required=True, help="Report emitted by sync-candidate.")
+    recover_parser.add_argument("--approve", action="store_true", help="Explicitly approve recovery fast-forward.")
+    recover_parser.add_argument("--output", help="Write recovery report outside both repositories.")
+
     return parser
 
 
@@ -138,7 +144,7 @@ def main(argv: list[str] | None = None) -> int:
                 if output_path == candidate_path or candidate_path in output_path.parents:
                     raise ValueError("Verification report output must be outside the candidate workspace.")
             _write_report(report, args.output, candidate_path)
-        else:
+        elif args.command == "sync-accept":
             source_root = Path(args.path).expanduser().resolve()
             candidate_data = json.loads(Path(args.candidate_report).expanduser().read_text(encoding="utf-8"))
             candidate_path = Path(candidate_data["candidate_path"]).expanduser().resolve()
@@ -153,6 +159,16 @@ def main(argv: list[str] | None = None) -> int:
                 upstream_url=args.upstream_url, approved=args.approve,
                 evidence_reviewed=args.evidence_reviewed,
             )
+            _write_report(report, args.output, source_root)
+        else:
+            source_root = Path(args.path).expanduser().resolve()
+            candidate_data = json.loads(Path(args.candidate_report).expanduser().read_text(encoding="utf-8"))
+            candidate_path = Path(candidate_data["candidate_path"]).expanduser().resolve()
+            if args.output:
+                output_path = Path(args.output).expanduser().resolve()
+                if output_path == source_root or source_root in output_path.parents or output_path == candidate_path or candidate_path in output_path.parents:
+                    raise ValueError("Recovery report output must be outside both repositories.")
+            report = recover_sync_acceptance(source_root, args.candidate_report, approved=args.approve)
             _write_report(report, args.output, source_root)
         return 0
     except (InspectionError, LicenceScanError, SyncPlanError, ValueError, OSError, KeyError) as exc:
