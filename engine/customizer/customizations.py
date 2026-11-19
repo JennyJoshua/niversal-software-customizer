@@ -417,6 +417,6 @@ def analyze_customization_impact(
         "blocked_reasons": list(dict.fromkeys(blocked)),
         "feature_protection_enforced": False,
         "note": (
-            "Impact analysis is read-only. Required tests are identified but are not executed or enforced as acceptance evidence in this milestone."
+            "Impact analysis is read-only. Required test IDs are enforced as supplied verification and acceptance evidence; USC does not execute project-specific tests."
         ),
     }
