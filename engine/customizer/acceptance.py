@@ -218,10 +218,13 @@ def recover_sync_acceptance(repository: str | Path, candidate_report_path: str |
         raise SyncPlanError("Candidate report is missing required branch or SHA identities.")
     if _git(candidate, "branch", "--show-current").stdout.strip() != candidate_branch:
         raise SyncPlanError("Candidate branch changed; recovery is blocked.")
+    if _git(candidate, "status", "--porcelain=v1", "--untracked-files=all").stdout:
+        raise SyncPlanError("Candidate has uncommitted changes; recovery will not trust modified provenance.")
     usc = candidate / ".usc"
+    provenance_dir = usc / "provenance"
     baseline_path = usc / "upstream-baseline.json"
-    provenance_path = usc / "provenance" / f"sync-{target}.json"
-    if usc.is_symlink() or baseline_path.is_symlink() or provenance_path.is_symlink():
+    provenance_path = provenance_dir / f"sync-{target}.json"
+    if usc.is_symlink() or provenance_dir.is_symlink() or baseline_path.is_symlink() or provenance_path.is_symlink():
         raise SyncPlanError("Candidate provenance paths are unsafe.")
     if not baseline_path.is_file() or not provenance_path.is_file():
         raise SyncPlanError("Candidate provenance is incomplete. If interrupted before provenance commit, discard the candidate and recreate it; original branch remains unchanged.")
@@ -241,6 +244,10 @@ def recover_sync_acceptance(repository: str | Path, candidate_report_path: str |
     if provenance.get("candidate_branch") != candidate_branch or provenance.get("original_branch") != original_branch:
         raise SyncPlanError("Candidate provenance branch identities do not match the candidate report.")
     merge_sha = str(provenance.get("merge_commit_sha", "")).lower()
+    if not merge_sha or str(baseline.get("last_customized_merge_commit_sha", "")).lower() != merge_sha:
+        raise SyncPlanError("Baseline and provenance merge commit identities do not match.")
+    if baseline.get("provenance_path") != provenance_path.relative_to(candidate).as_posix():
+        raise SyncPlanError("Baseline provenance path does not match the recorded provenance file.")
     final_tip = _git(candidate, "rev-parse", "--verify", "HEAD^{commit}").stdout.strip().lower()
     merge_parents = _git(candidate, "rev-list", "--parents", "-n", "1", merge_sha).stdout.split()
     if len(merge_parents) != 3 or merge_parents[1].lower() != customized or merge_parents[2].lower() != target:
@@ -251,8 +258,10 @@ def recover_sync_acceptance(repository: str | Path, candidate_report_path: str |
     merge_tree = _git(candidate, "rev-parse", "--verify", f"{merge_sha}^{{tree}}").stdout.strip().lower()
     if merge_tree != str(provenance.get("candidate_tree_sha", "")).lower():
         raise SyncPlanError("Provenance candidate tree does not match the upstream merge commit tree.")
-    _git(candidate, "show", f"{final_tip}:.usc/upstream-baseline.json")
-    _git(candidate, "show", f"{final_tip}:.usc/provenance/sync-{target}.json")
+    committed_baseline = json.loads(_git(candidate, "show", f"{final_tip}:.usc/upstream-baseline.json").stdout)
+    committed_provenance = json.loads(_git(candidate, "show", f"{final_tip}:.usc/provenance/sync-{target}.json").stdout)
+    if committed_baseline != baseline or committed_provenance != provenance:
+        raise SyncPlanError("Candidate working provenance differs from the committed provenance/baseline records.")
 
     head = _git(repo, "rev-parse", "--verify", "HEAD^{commit}").stdout.strip().lower()
     status = _git(repo, "status", "--porcelain=v1", "--untracked-files=all").stdout
