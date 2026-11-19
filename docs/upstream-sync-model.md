@@ -127,3 +127,29 @@ The verifier re-checks candidate branch, original customized HEAD, upstream MERG
 ## Acceptance remains outstanding
 
 A `verification_passed` report does not change the original customized repository. The next batch must add explicit acceptance with compare-and-swap protection against an original HEAD change, ensure the candidate still matches the verified tree, commit the merge with the customized commit as first parent and upstream target as second parent, advance the upstream baseline only after success, and write complete provenance. Failure must leave the original customized ref and baseline unchanged.
+
+
+## Current implementation: explicit acceptance and baseline advancement
+
+After successful evidence validation and a human review of the evidence source, run:
+
+```bash
+usc sync-accept --path ./customized-repository \
+  --candidate-report ../candidate-report.json \
+  --verification-report ../verification-report.json \
+  --upstream-url https://github.com/OWNER/UPSTREAM-REPOSITORY \
+  --evidence-reviewed --approve
+```
+
+Acceptance:
+- Requires explicit `--approve` and `--evidence-reviewed`; evidence is not independently authenticated by the current verifier.
+- Re-runs the read-only sync plan and confirms the original branch, original HEAD, and clean worktree still match the candidate's starting point.
+- Confirms the candidate is still in the expected uncommitted merge state and its tree SHA matches the verification report.
+- Creates a two-parent upstream merge commit and a separate provenance commit in the isolated candidate clone.
+- Records the canonical upstream URL, base/target/customized SHAs, changed paths, rights acknowledgement, reviewer, verification/test references, merge SHA, and tool version.
+- Writes `.usc/upstream-baseline.json` with the newly imported upstream SHA.
+- Fetches the prepared candidate tip into the original repository and fast-forwards the original branch only after another clean-HEAD/branch check.
+
+If a pre-update gate fails, the original branch and baseline remain unchanged. Acceptance does not run project scripts or tests. The baseline and provenance become part of the original branch only when the fast-forward succeeds.
+
+The current verifier still trusts reviewer-supplied evidence structure and references; it does not independently authenticate GitHub Actions. Automated candidate discard/interruption recovery and a trusted CI attestation policy remain outstanding.
