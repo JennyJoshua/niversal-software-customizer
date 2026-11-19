@@ -75,3 +75,14 @@ Build a reusable, configuration-driven framework that helps produce separately b
 - Block changes when licence status is unresolved or approval is absent.
 - Prove through tests that an adapter changes only allowlisted files.
 - CI passes and provenance is recorded.
+
+
+## Customization registry and selective-sync requirements — planned
+
+- Provide a versioned, declarative registry for product customizations, mapping stable feature IDs to categories, relevant paths/structural selectors, protection modes, and targeted regression-test identifiers.
+- Model customizations at feature/behaviour level as well as file level; a file may contain both upstream-owned and product-owned logic.
+- Treat missing, stale, ambiguous, or unsupported registry mappings as unverified and block acceptance where preservation cannot be demonstrated.
+- Protect registry changes through review and provenance; never store secrets or live user data in the registry.
+- Initially use the registry for classification, reporting, and test selection only. It must not automatically rewrite code or resolve conflicts.
+- Add format-aware JSON merging only after the registry and regression-test mapping are implemented; YAML support is a later, restricted extension.
+- Structured merges must use three-way semantics, preserve unknown fields, reject ambiguous list/delete-edit conflicts, validate output, and remain inside the isolated candidate workflow.
