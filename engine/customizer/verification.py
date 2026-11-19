@@ -73,6 +73,14 @@ def create_sync_verification(
     if parsed_time.tzinfo is None or parsed_time.utcoffset() is None:
         raise SyncPlanError("verified_at must include an explicit timezone offset.")
 
+    required_test_ids = candidate_report.get("required_customization_test_ids", [])
+    if (
+        not isinstance(required_test_ids, list)
+        or any(not isinstance(test_id, str) or not test_id.strip() for test_id in required_test_ids)
+        or len(required_test_ids) != len(set(required_test_ids))
+    ):
+        raise SyncPlanError("Candidate report has an invalid required_customization_test_ids list.")
+
     tests = evidence.get("test_results")
     if not isinstance(tests, list) or not tests:
         raise SyncPlanError("Verification evidence must list at least one successful test result.")
@@ -85,6 +93,23 @@ def create_sync_verification(
             raise SyncPlanError(f"Test result {index + 1} has not passed; candidate verification is blocked.")
         if not isinstance(item.get("evidence_ref"), str) or not item["evidence_ref"].strip():
             raise SyncPlanError(f"Test result {index + 1} must include an evidence_ref (log, report, or CI run).")
+
+    result_test_ids = [item.get("test_id") for item in tests if isinstance(item.get("test_id"), str)]
+    if len(result_test_ids) != len(set(result_test_ids)):
+        raise SyncPlanError("Verification evidence contains duplicate test_id results.")
+    missing_test_ids = sorted(set(required_test_ids) - set(result_test_ids))
+    if missing_test_ids:
+        raise SyncPlanError(
+            "Required customization regression test IDs are missing: " + ", ".join(missing_test_ids) + "."
+        )
+    failed_required = sorted({
+        item["test_id"] for item in tests
+        if item.get("test_id") in required_test_ids and item.get("passed") is not True
+    })
+    if failed_required:
+        raise SyncPlanError(
+            "Required customization regression tests have not passed: " + ", ".join(failed_required) + "."
+        )
 
     _assert_no_custom_git_drivers(candidate)
     head = _git(candidate, "rev-parse", "--verify", "HEAD^{commit}").stdout.strip().lower()
@@ -171,6 +196,8 @@ def create_sync_verification(
         "verified_at": parsed_time.isoformat(),
         "verification_source": evidence["verification_source"].strip(),
         "test_results": tests,
+        "required_customization_test_ids": sorted(required_test_ids),
+        "verified_customization_test_ids": sorted(set(required_test_ids) & set(result_test_ids)),
         "rights_reviewed": evidence.get("rights_reviewed", False),
         "evidence_authenticated": github_evidence is not None,
         "github_actions_evidence": github_evidence,

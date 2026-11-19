@@ -10,7 +10,7 @@ This is not a universal source-code converter, reverse-engineering tool, or meth
 
 ## Current status
 
-**Foundation + static inspection + rights-evidence reporting + upstream sync planning, isolated candidate integration, explicit acceptance, provenance, recovery, GitHub Actions evidence authentication, and customization registry v1 validation.** A synthetic public-GitHub snapshot-to-authenticated-verification-to-acceptance lifecycle has passed. Snapshot publication remains a separate manual push in normal user workflows. The new customization registry command validates declarations and referenced paths only; it does not yet enforce feature-level preservation during synchronization. Branding transformations and production adapters are not yet implemented.
+**Foundation + static inspection + rights-evidence reporting + upstream sync planning, isolated candidate integration, explicit acceptance, provenance, recovery, GitHub Actions evidence authentication, customization registry v1 validation, and registry-aware upstream change impact reporting.** A synthetic public-GitHub snapshot-to-authenticated-verification-to-acceptance lifecycle has passed. Snapshot publication remains a separate manual push in normal user workflows. Registry-aware planning identifies affected customizations and required regression test IDs. Verification and acceptance now require passing evidence for every declared test ID, bound to the exact candidate tree; USC validates supplied evidence but does not execute project tests. Branding transformations and production adapters are not yet implemented.
 
 ## First capabilities
 
@@ -39,7 +39,15 @@ The new `sync-verify` command validates evidence against the exact candidate tre
 
 The rights report inventories root and nested evidence, extracts supported dependency declarations, and highlights asset and trademark review areas. It does not execute project code or determine legal permission. Every rights report remains human-review-required and blocks customization.
 
-The `customization-check` command validates `.usc/customizations.json` against registry v1 rules, checks exact referenced files and symlink safety, and reports stale or ambiguous declarations. A missing registry is reported as `not_configured` so existing projects continue unchanged. Registry validation is read-only and does not yet classify upstream changes, execute tests, or enforce acceptance.
+The `customization-check` command validates `.usc/customizations.json` against registry v1 rules, checks exact referenced files and symlink safety, and reports stale or ambiguous declarations. A missing registry is reported as `not_configured` so existing projects continue unchanged. Registry validation is read-only. Sync planning correlates upstream changes with registered customization paths, reports affected features and required regression test IDs, and blocks invalid registries, custom-only upstream edits, protected deletions, and unmapped overlapping changes. `sync-verify` requires a passing result for each required test ID and binds the report to the exact candidate tree SHA. `sync-accept` recomputes the sync plan and refuses acceptance if required IDs are missing, failed, stale, or mismatched. USC validates the evidence supplied by the reviewer; it does not execute the project tests.
+
+## Repository identity
+
+The canonical GitHub repository is [JennyJoshua/universal-software-customizer](https://github.com/JennyJoshua/universal-software-customizer). The former `niversal-software-customizer` name is historical only; use the canonical name in all new links, documents, and handovers. See [repository identity](docs/repository-identity.md).
+
+## Registry-aware synchronization
+
+`usc sync-plan` now includes a `customization_impact` section when a valid `.usc/customizations.json` exists. It identifies affected registry entries, mapped changed paths, protection modes, and required test IDs. Invalid registries and unsafe protected-path changes block the plan. Required tests are enforced as a verification and acceptance gate: each required ID must have a passing result tied to the exact candidate tree. USC checks supplied evidence but does not execute project tests. Projects without a registry retain the previous planning behaviour.
 
 ## Principles
 

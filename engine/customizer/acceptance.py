@@ -78,6 +78,29 @@ def accept_sync_candidate(
     plan = create_sync_plan(repo, report["base_sha"], report["upstream_target_sha"])
     if plan["status"] != "ready_for_review":
         raise SyncPlanError("Fresh upstream sync preflight is blocked.")
+
+    required_test_ids = sorted(plan.get("required_customization_test_ids", []))
+    candidate_test_ids = report.get("required_customization_test_ids", [])
+    verification_test_ids = verification.get("required_customization_test_ids", [])
+    verified_test_ids = verification.get("verified_customization_test_ids", [])
+    if candidate_test_ids != required_test_ids:
+        raise SyncPlanError("Candidate required regression test IDs do not match the fresh upstream sync plan.")
+    if verification_test_ids != required_test_ids or verified_test_ids != required_test_ids:
+        raise SyncPlanError("Verification evidence does not prove every currently required customization regression test passed.")
+    results = verification.get("test_results")
+    if not isinstance(results, list):
+        raise SyncPlanError("Verification report has no valid test_results list.")
+    passed_ids = {
+        item.get("test_id") for item in results
+        if isinstance(item, dict)
+        and item.get("passed") is True
+        and isinstance(item.get("evidence_ref"), str)
+        and item["evidence_ref"].strip()
+    }
+    if not set(required_test_ids).issubset(passed_ids):
+        missing = sorted(set(required_test_ids) - passed_ids)
+        raise SyncPlanError("Acceptance is blocked; required regression tests lack passing evidence: " + ", ".join(missing) + ".")
+
     if plan["rights_review_required"] and report.get("rights_reviewed") is not True:
         raise SyncPlanError("Changed upstream rights evidence has not been acknowledged.")
 

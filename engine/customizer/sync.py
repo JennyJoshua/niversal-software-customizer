@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
+from .customizations import analyze_customization_impact
 from typing import Any
 from urllib.parse import urlparse
 
@@ -306,6 +307,12 @@ def create_sync_plan(
         "local_only": sorted(local_paths - upstream_paths),
         "both_changed": overlap,
     }
+    customization_impact = analyze_customization_impact(repo, upstream_changes, local_changes)
+    blocked_reasons = []
+    if has_conflicts:
+        blocked_reasons.append("Git's three-way merge preflight found conflicts; automatic integration is prohibited.")
+    blocked_reasons.extend(customization_impact.get("blocked_reasons", []))
+    plan_blocked = has_conflicts or customization_impact.get("status") == "blocked"
     return {
         "schema_version": "1.0",
         "operation": "upstream_sync_plan",
@@ -320,11 +327,10 @@ def create_sync_plan(
         "merge_conflict_details": conflict_lines,
         "rights_review_required": bool(rights_paths),
         "rights_review_paths": rights_paths,
-        "status": "blocked" if has_conflicts else "ready_for_review",
-        "blocked_reasons": (
-            ["Git's three-way merge preflight found conflicts; automatic integration is prohibited."]
-            if has_conflicts else []
-        ),
+        "status": "blocked" if plan_blocked else "ready_for_review",
+        "blocked_reasons": blocked_reasons,
+        "customization_impact": customization_impact,
+        "required_customization_test_ids": customization_impact.get("required_test_ids", []),
         "integration_approval_required": True,
         "integration_performed": False,
         "note": (
@@ -422,6 +428,8 @@ def create_sync_candidate(
             "merge_conflicts": conflict_paths,
             "merge_output": merge_result.stdout.strip(),
             "rights_reviewed": bool(rights_reviewed),
+            "customization_impact": plan.get("customization_impact", {}),
+            "required_customization_test_ids": plan.get("required_customization_test_ids", []),
             "integration_committed": False,
             "original_repository_unchanged": True,
             "tests_run": False,

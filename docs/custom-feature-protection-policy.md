@@ -81,10 +81,9 @@ USC protects changes through isolated candidates, three-way Git integration, exp
 
 The policy is considered implemented for an adapter only when its allowlist, preservation tests, regression tests, and failure behaviour are present and passing. The existence of this policy document alone does not mean every listed area is already automatically detected or protected.
 
-
 ## Machine-readable customization registry — v1 validation implemented
 
-The policy above is now complemented by a versioned, project-owned registry at `.usc/customizations.json`. The read-only command `usc customization-check --path <project>` validates the v1 declarations, exact path references, and protection-mode constraints. This is registry validation, not yet automatic feature-level detection or sync enforcement.
+The policy above is complemented by a versioned, project-owned registry at `.usc/customizations.json`. The read-only command `usc customization-check --path <project>` validates v1 declarations, exact path references, and protection-mode constraints. This command validates the registry itself; registry-aware upstream sync planning and acceptance enforcement are implemented separately below.
 
 A registry entry should include:
 - A stable customization ID and human-readable purpose.
@@ -102,4 +101,19 @@ Registry rules:
 - Registry edits are themselves protected project changes. Record their diff in provenance and require explicit review before changing or removing existing protection.
 - Never store credentials, secrets, customer records, or live production data in the registry.
 
-Registry v1 is declarative and read-only. It validates schema, stable IDs, categories, protection modes, exact existing file paths, symlink safety, ownership consistency, test identifiers, and evidence URL hygiene. It does not yet classify candidate changes, select or execute tests, enforce acceptance gates, rewrite source code, or resolve conflicts. A valid registry report therefore sets `feature_protection_enforced` to `false`. Registry-aware sync planning and acceptance enforcement must be implemented and tested before any adapter may claim automatic feature-level protection.
+Registry validation is declarative and read-only. It validates schema, stable IDs, categories, protection modes, exact existing file paths, symlink safety, ownership consistency, test identifiers, and evidence URL hygiene. The validation command alone does not classify candidate changes, select or execute tests, rewrite source code, or resolve conflicts. A valid registry report therefore sets `feature_protection_enforced` to `false`; that flag does not imply that the separate sync planning and acceptance checks are absent.
+
+## Registry-aware sync planning and acceptance — implemented
+
+The read-only sync planner evaluates upstream path changes against a valid customization registry and includes a `customization_impact` report.
+
+- Affected customization IDs, protection modes, changed paths, ownership declarations, and required regression test IDs are reported.
+- An invalid or unreadable registry blocks the plan.
+- An upstream edit to a registered `custom_only` path blocks the plan for manual reconciliation.
+- An upstream deletion of a registered mixed-ownership path blocks the plan.
+- An overlapping upstream/local change not mapped to a registered customization blocks the plan for human review.
+- A `block_for_review` entry blocks planning when affected.
+- `require_regression_tests` entries contribute their test IDs to the plan and isolated candidate report.
+- A missing registry remains backward-compatible and is reported as `not_configured`.
+
+Candidate verification requires an explicit passing result for every registry-required test ID and binds the verification report to the exact candidate tree SHA. Acceptance recomputes the current sync plan and rejects missing, stale, failed, or mismatched required-test evidence. The verification report records both the required and verified test IDs. USC validates supplied evidence; it does not execute project-specific tests. Human review remains necessary, and the feature protection enforcement flag remains false for semantic preservation beyond the declared checks.

@@ -735,3 +735,232 @@ def test_upstream_deletion_conflicts_with_custom_rename(tmp_path):
     assert plan["merge_conflicts"]
     assert git(repo, "rev-parse", "HEAD") == customized
     assert (repo / "custom-renamed.txt").read_text(encoding="utf-8") == "base\n"
+
+
+def _registry_repo(tmp_path, *, ownership="mixed", protection_mode="require_regression_tests"):
+    import json
+
+    repo, _ = init_repo(tmp_path)
+    (repo / "feature.py").write_text("base feature\n", encoding="utf-8")
+    (repo / ".usc").mkdir()
+    (repo / ".usc" / "customizations.json").write_text(json.dumps({
+        "schema_version": "1.0",
+        "project_id": "sync-test",
+        "customizations": [{
+            "id": "custom-feature",
+            "name": "Custom feature",
+            "purpose": "Protect a project-specific feature",
+            "category": "feature_workflow",
+            "protection_mode": protection_mode,
+            "paths": [{"path": "feature.py", "ownership": ownership}],
+            "test_ids": ["feature-regression"] if protection_mode == "require_regression_tests" else [],
+            "review_note": "Human review required" if protection_mode == "block_for_review" else None,
+        }],
+    }), encoding="utf-8")
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "add customization registry")
+    base = git(repo, "rev-parse", "HEAD")
+    return repo, base
+
+
+def _upstream_target(repo, base, *, delete=False):
+    if delete:
+        (repo / "feature.py").unlink()
+        git(repo, "add", "-u", "feature.py")
+    else:
+        (repo / "feature.py").write_text("upstream feature update\n", encoding="utf-8")
+        git(repo, "add", "feature.py")
+    git(repo, "commit", "-qm", "upstream feature change")
+    target = git(repo, "rev-parse", "HEAD")
+    git(repo, "branch", "upstream/registry-test", target)
+    git(repo, "reset", "--hard", base)
+    return target
+
+
+def test_registry_required_tests_are_reported_in_sync_plan(tmp_path):
+    repo, base = _registry_repo(tmp_path)
+    target = _upstream_target(repo, base)
+
+    plan = create_sync_plan(repo, base, target)
+
+    assert plan["status"] == "ready_for_review"
+    assert plan["customization_impact"]["status"] == "review_required"
+    assert plan["customization_impact"]["affected_customizations"][0]["id"] == "custom-feature"
+    assert plan["required_customization_test_ids"] == ["feature-regression"]
+    assert plan["integration_performed"] is False
+
+
+def test_upstream_change_to_custom_only_path_blocks_sync_plan(tmp_path):
+    repo, base = _registry_repo(tmp_path, ownership="custom_only", protection_mode="preserve")
+    target = _upstream_target(repo, base)
+
+    plan = create_sync_plan(repo, base, target)
+
+    assert plan["status"] == "blocked"
+    assert any("custom-only path" in reason for reason in plan["blocked_reasons"])
+
+
+def test_upstream_deletion_of_mixed_customization_path_blocks_sync_plan(tmp_path):
+    repo, base = _registry_repo(tmp_path)
+    target = _upstream_target(repo, base, delete=True)
+
+    plan = create_sync_plan(repo, base, target)
+
+    assert plan["status"] == "blocked"
+    assert any("deletes mixed-ownership path" in reason for reason in plan["blocked_reasons"])
+
+
+def test_invalid_registry_blocks_sync_plan(tmp_path):
+    repo, base = _registry_repo(tmp_path)
+    target = _upstream_target(repo, base)
+    registry = repo / ".usc" / "customizations.json"
+    registry.write_text("{invalid json", encoding="utf-8")
+    git(repo, "add", ".usc/customizations.json")
+    git(repo, "commit", "-qm", "corrupt registry")
+    customized = git(repo, "rev-parse", "HEAD")
+    # Keep the corrupt local registry change separate from the upstream history.
+
+    plan = create_sync_plan(repo, base, target)
+
+    assert plan["status"] == "blocked"
+    assert plan["customization_impact"]["registry_status"] == "blocked"
+
+
+def test_registry_impact_matches_both_sides_of_upstream_rename(tmp_path):
+    repo, base = _registry_repo(tmp_path)
+    git(repo, "mv", "feature.py", "renamed_feature.py")
+    git(repo, "commit", "-qm", "upstream rename feature")
+    target = git(repo, "rev-parse", "HEAD")
+    git(repo, "branch", "upstream/rename-test", target)
+    git(repo, "reset", "--hard", base)
+
+    plan = create_sync_plan(repo, base, target)
+
+    assert plan["status"] == "ready_for_review"
+    affected = plan["customization_impact"]["affected_customizations"]
+    assert affected[0]["changed_paths"] == ["feature.py"]
+    assert plan["required_customization_test_ids"] == ["feature-regression"]
+
+
+def test_unmapped_overlapping_change_is_blocked_when_registry_exists(tmp_path):
+    repo, base = _registry_repo(tmp_path)
+    target = commit_file(repo, "base.txt", "upstream base change\n", "upstream base edit")
+    git(repo, "branch", "upstream/unmapped-overlap", target)
+    git(repo, "reset", "--hard", base)
+    commit_file(repo, "base.txt", "custom base change\n", "local base edit")
+
+    plan = create_sync_plan(repo, base, target)
+
+    assert plan["status"] == "blocked"
+    assert plan["customization_impact"]["unmapped_overlaps"] == ["base.txt"]
+
+
+def _make_registry_candidate(tmp_path):
+    import json
+    from customizer.sync import create_sync_candidate
+
+    repo, base = _registry_repo(tmp_path)
+    target = _upstream_target(repo, base)
+    candidate = create_sync_candidate(repo, base, target, tmp_path / "candidate", approved=True)
+    candidate_path = tmp_path / "candidate-report.json"
+    candidate_path.write_text(json.dumps(candidate), encoding="utf-8")
+    return repo, candidate, candidate_path, tmp_path / "candidate"
+
+
+def _registry_verification_evidence(candidate, workspace, *, test_results=None):
+    return {
+        "schema_version": "1.0",
+        "verification_status": "passed",
+        "reviewer": "Independent reviewer",
+        "verified_at": "2026-11-20T10:30:00+10:00",
+        "verification_source": "CI run 789",
+        "candidate_tree_sha": git(workspace, "write-tree"),
+        "rights_reviewed": False,
+        "test_results": test_results if test_results is not None else [{
+            "test_id": "feature-regression",
+            "name": "Feature regression test",
+            "passed": True,
+            "evidence_ref": "CI run 789",
+        }],
+    }
+
+
+def test_registry_verification_requires_every_declared_test_id(tmp_path):
+    import json
+    from customizer.verification import create_sync_verification
+
+    _, candidate, candidate_path, workspace = _make_registry_candidate(tmp_path)
+    evidence_path = tmp_path / "evidence.json"
+    evidence_path.write_text(json.dumps(_registry_verification_evidence(
+        candidate, workspace, test_results=[{
+            "test_id": "unrelated-test",
+            "name": "Unrelated test",
+            "passed": True,
+            "evidence_ref": "CI run 789",
+        }],
+    )), encoding="utf-8")
+
+    with pytest.raises(SyncPlanError, match="Required customization regression test IDs are missing"):
+        create_sync_verification(candidate_path, evidence_path)
+
+
+def test_registry_verification_records_exact_required_test_ids(tmp_path):
+    import json
+    from customizer.verification import create_sync_verification
+
+    _, candidate, candidate_path, workspace = _make_registry_candidate(tmp_path)
+    evidence_path = tmp_path / "evidence.json"
+    evidence_path.write_text(json.dumps(_registry_verification_evidence(candidate, workspace)), encoding="utf-8")
+
+    result = create_sync_verification(candidate_path, evidence_path)
+
+    assert result["status"] == "verification_passed"
+    assert result["required_customization_test_ids"] == ["feature-regression"]
+    assert result["verified_customization_test_ids"] == ["feature-regression"]
+
+
+def test_registry_acceptance_rejects_missing_verified_test_evidence(tmp_path):
+    import json
+    from customizer.acceptance import accept_sync_candidate
+    from customizer.verification import create_sync_verification
+
+    repo, candidate, candidate_path, workspace = _make_registry_candidate(tmp_path)
+    evidence_path = tmp_path / "evidence.json"
+    evidence_path.write_text(json.dumps(_registry_verification_evidence(candidate, workspace)), encoding="utf-8")
+    verification = create_sync_verification(candidate_path, evidence_path)
+    verification["verified_customization_test_ids"] = []
+    verification_path = tmp_path / "verification-report.json"
+    verification_path.write_text(json.dumps(verification), encoding="utf-8")
+    original_head = git(repo, "rev-parse", "HEAD")
+
+    with pytest.raises(SyncPlanError, match="does not prove every currently required"):
+        accept_sync_candidate(
+            repo, candidate_path, verification_path,
+            upstream_url="https://github.com/upstream/sample-project",
+            approved=True, evidence_reviewed=True,
+        )
+
+    assert git(repo, "rev-parse", "HEAD") == original_head
+    assert (repo / "feature.py").read_text(encoding="utf-8") == "base feature\n"
+
+
+def test_registry_acceptance_succeeds_only_with_exact_required_test_evidence(tmp_path):
+    import json
+    from customizer.acceptance import accept_sync_candidate
+    from customizer.verification import create_sync_verification
+
+    repo, candidate, candidate_path, workspace = _make_registry_candidate(tmp_path)
+    evidence_path = tmp_path / "evidence.json"
+    evidence_path.write_text(json.dumps(_registry_verification_evidence(candidate, workspace)), encoding="utf-8")
+    verification = create_sync_verification(candidate_path, evidence_path)
+    verification_path = tmp_path / "verification-report.json"
+    verification_path.write_text(json.dumps(verification), encoding="utf-8")
+
+    result = accept_sync_candidate(
+        repo, candidate_path, verification_path,
+        upstream_url="https://github.com/upstream/sample-project",
+        approved=True, evidence_reviewed=True,
+    )
+
+    assert result["status"] == "accepted"
+    assert (repo / "feature.py").read_text(encoding="utf-8") == "upstream feature update\n"
