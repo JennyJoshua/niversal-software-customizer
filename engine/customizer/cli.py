@@ -60,6 +60,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     verify_parser.add_argument("--candidate-report", required=True, help="JSON report emitted by sync-candidate.")
     verify_parser.add_argument("--evidence", required=True, help="Reviewer-supplied JSON test evidence.")
+    verify_parser.add_argument("--github-run-url", help="Canonical GitHub Actions run URL for a published candidate snapshot.")
+    verify_parser.add_argument("--github-repo", help="Trusted GitHub OWNER/REPOSITORY for the Actions run.")
+    verify_parser.add_argument("--workflow-id", type=int, help="Trusted numeric GitHub Actions workflow ID.")
+    verify_parser.add_argument("--workflow-path", help="Trusted repository-relative workflow path.")
+    verify_parser.add_argument("--workflow-blob-sha", help="Pinned Git blob SHA of the trusted workflow file.")
     verify_parser.add_argument("--output", help="Write verification report outside the candidate workspace.")
 
     accept_parser = subparsers.add_parser(
@@ -136,7 +141,12 @@ def main(argv: list[str] | None = None) -> int:
             )
             _write_report(report, args.output, source_root)
         elif args.command == "sync-verify":
-            report = create_sync_verification(args.candidate_report, args.evidence)
+            report = create_sync_verification(
+                args.candidate_report, args.evidence,
+                github_run_url=args.github_run_url, github_repository=args.github_repo,
+                workflow_id=args.workflow_id, workflow_path=args.workflow_path,
+                workflow_blob_sha=args.workflow_blob_sha,
+            )
             candidate_data = json.loads(Path(args.candidate_report).expanduser().read_text(encoding="utf-8"))
             candidate_path = Path(candidate_data["candidate_path"]).expanduser().resolve()
             if args.output:

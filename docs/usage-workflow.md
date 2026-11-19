@@ -90,10 +90,6 @@ Possible outcomes:
 
 The candidate is deliberately left uncommitted. This command does not run source scripts, tests, builds, update the original repository, advance the imported baseline, or publish anything. The candidate folder is yours to inspect, retain, or delete.
 
-## Candidate acceptance (not yet implemented)
-
-A later batch will add controlled verification and provenance acceptance. Until then, do not treat a clean candidate as a completed upstream update. The original customized ref remains the authoritative copy.
-
 ## Safety and limitations
 
 - Inspection, rights scanning, and sync planning are read-only and do not execute application code, scripts, installers, hooks, or builds.
@@ -177,3 +173,35 @@ usc sync-recover --path ./customized-repository \\
 \`\`\`
 
 Recovery validates the candidate's merge parents, committed provenance, and baseline before fast-forwarding. It refuses a changed or dirty original branch. If interruption occurred before the candidate provenance/baseline commit was completed, discard the candidate and create a fresh candidate; the original branch remains unchanged. Recovery is idempotent after a successful fast-forward.
+
+
+## Independently authenticate GitHub Actions evidence
+
+The optional authenticated mode of sync verification checks a public GitHub Actions run through the GitHub REST API. It requires all of the following:
+- The run belongs to the exact trusted OWNER/REPOSITORY.
+- It is a completed, successful push run on a branch beginning usc-verify/.
+- The run uses the expected workflow ID and path.
+- Every reported job completed successfully.
+- The run's head commit tree SHA equals the current candidate index tree SHA.
+- The workflow file at that commit has the independently pinned trusted blob SHA.
+
+A run URL alone is not evidence. Do not copy a green run from another branch, repository, workflow, or candidate.
+
+The candidate merge is currently uncommitted. To authenticate a run, a verification snapshot must first be committed and pushed to the customized fork on an isolated usc-verify/ branch, with its tree exactly equal to the candidate tree. The snapshot must not advance the product branch or baseline. The dedicated snapshot helper and full lifecycle integration are a separate implementation batch; until that exists, continue using the unauthenticated evidence mode and retain the explicit human evidence-review gate.
+
+Once a matching snapshot run exists, authenticated verification uses these additional options:
+
+```bash
+usc sync-verify --candidate-report ../candidate-report.json \
+  --evidence ../verification-evidence.json \
+  --github-run-url https://github.com/OWNER/FORK/actions/runs/RUN_ID \
+  --github-repo OWNER/FORK \
+  --workflow-id TRUSTED_WORKFLOW_ID \
+  --workflow-path .github/workflows/ci.yml \
+  --workflow-blob-sha TRUSTED_WORKFLOW_FILE_BLOB_SHA \
+  --output ../verification-report.json
+```
+
+The workflow ID and workflow-file blob SHA are trust anchors and must be obtained from a trusted repository revision and maintained deliberately. If the workflow file changes, authentication fails until a human reviews and updates the trust anchor. The authenticated mode currently supports public GitHub repositories; private-repository token handling is not included.
+
+Even authenticated CI does not authenticate the human reviewer or legal/rights acknowledgement. Explicit candidate approval remains mandatory.

@@ -1,4 +1,4 @@
-"""Validate externally produced sync-candidate test evidence without executing project code."""
+"""Validate external test evidence against an unchanged sync candidate."""
 from __future__ import annotations
 
 import json
@@ -6,14 +6,28 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from .github_actions import authenticate_github_actions_run
 from .sync import SyncPlanError, _assert_no_custom_git_drivers, _git
 
 
 def create_sync_verification(
     candidate_report_path: str | Path,
     evidence_path: str | Path,
+    *,
+    github_run_url: str | None = None,
+    github_repository: str | None = None,
+    workflow_id: int | None = None,
+    workflow_path: str | None = None,
+    workflow_blob_sha: str | None = None,
 ) -> dict[str, Any]:
-    """Bind reviewer-supplied test evidence to the exact current candidate tree."""
+    """Bind reviewer evidence to the candidate tree and optionally authenticate GitHub Actions."""
+    github_values = (github_run_url, github_repository, workflow_id, workflow_path, workflow_blob_sha)
+    if any(value is not None for value in github_values) and not all(value is not None for value in github_values):
+        raise SyncPlanError(
+            "GitHub Actions authentication requires --github-run-url, --github-repo, "
+            "--workflow-id, --workflow-path, and --workflow-blob-sha together."
+        )
+
     report_file = Path(candidate_report_path).expanduser().resolve()
     evidence_file = Path(evidence_path).expanduser().resolve()
     if not report_file.is_file() or not evidence_file.is_file():
@@ -101,6 +115,21 @@ def create_sync_verification(
             "candidate_tree_sha does not match the current candidate index tree; evidence is stale or belongs to another candidate."
         )
 
+    github_evidence = None
+    if github_run_url is not None:
+        if evidence["verification_source"].strip() != github_run_url:
+            raise SyncPlanError("verification_source must exactly match the authenticated GitHub Actions run URL.")
+        if not any(item["evidence_ref"].strip() == github_run_url for item in tests):
+            raise SyncPlanError("At least one test result must reference the exact authenticated GitHub Actions run URL.")
+        github_evidence = authenticate_github_actions_run(
+            github_run_url,
+            expected_repository=str(github_repository),
+            expected_tree_sha=tree_sha,
+            expected_workflow_id=int(workflow_id),
+            expected_workflow_path=str(workflow_path),
+            expected_workflow_blob_sha=str(workflow_blob_sha),
+        )
+
     return {
         "schema_version": "1.0",
         "operation": "upstream_sync_verification",
@@ -115,8 +144,14 @@ def create_sync_verification(
         "verification_source": evidence["verification_source"].strip(),
         "test_results": tests,
         "rights_reviewed": evidence.get("rights_reviewed", False),
-        "evidence_authenticated": False,
+        "evidence_authenticated": github_evidence is not None,
+        "github_actions_evidence": github_evidence,
         "note": (
+            "GitHub Actions evidence was independently checked against the repository, pinned workflow, "
+            "successful run jobs, head commit, and exact candidate tree. The reviewer identity and rights "
+            "review acknowledgement remain human-supplied; this report is not legal approval and does not "
+            "accept/update the original customized repository."
+            if github_evidence is not None else
             "This report validates the supplied evidence structure and binds it to the current candidate tree. "
             "It does not independently authenticate the evidence source, run tests, grant legal approval, "
             "or accept/update the original customized repository."
