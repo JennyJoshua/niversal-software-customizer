@@ -5,12 +5,14 @@ merges, writes files, or updates refs. Fetching is deliberately a separate step.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 
 _SHA_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$", re.IGNORECASE)
@@ -58,6 +60,110 @@ def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProc
         detail = result.stderr.strip() or result.stdout.strip() or "unknown Git error"
         raise SyncPlanError(f"Git could not verify the requested synchronization: {detail}")
     return result
+
+
+def _canonical_upstream_url(value: str) -> str:
+    parsed = urlparse(value)
+    parts = [part for part in parsed.path.strip("/").split("/") if part]
+    if (
+        parsed.scheme != "https"
+        or parsed.netloc.lower() != "github.com"
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or len(parts) != 2
+    ):
+        raise SyncPlanError("upstream-url must be a canonical HTTPS GitHub OWNER/REPOSITORY URL.")
+    owner, repository = parts
+    repository = repository.removesuffix(".git")
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+", owner) or not re.fullmatch(r"[A-Za-z0-9_.-]+", repository):
+        raise SyncPlanError("upstream-url contains an invalid GitHub owner or repository name.")
+    return f"https://github.com/{owner}/{repository}"
+
+
+def resolve_sync_base(
+    repository: str | Path,
+    *,
+    base_sha: str | None = None,
+    upstream_url: str | None = None,
+) -> str:
+    """Resolve an explicit base SHA or validate the committed USC baseline/provenance."""
+    if base_sha is not None:
+        if not isinstance(base_sha, str) or not _SHA_RE.fullmatch(base_sha):
+            raise SyncPlanError("Base SHA override must be a full 40- or 64-character commit SHA.")
+        return base_sha.lower()
+    if not isinstance(upstream_url, str) or not upstream_url.strip():
+        raise SyncPlanError("Supply --base-sha or --upstream-url to load the stored upstream baseline.")
+
+    repo = Path(repository).expanduser().resolve()
+    if not repo.is_dir() or not (repo / ".git").exists():
+        raise SyncPlanError("Customized path must be an existing Git working repository.")
+    expected_url = _canonical_upstream_url(upstream_url)
+    usc_dir = repo / ".usc"
+    baseline_path = usc_dir / "upstream-baseline.json"
+    provenance_dir = usc_dir / "provenance"
+    if usc_dir.is_symlink() or not usc_dir.is_dir():
+        raise SyncPlanError("Stored upstream baseline directory is missing or unsafe.")
+    if baseline_path.is_symlink() or not baseline_path.is_file():
+        raise SyncPlanError("Stored upstream baseline is missing or unsafe; provide an explicit --base-sha override.")
+    if provenance_dir.is_symlink() or not provenance_dir.is_dir():
+        raise SyncPlanError("Stored upstream provenance directory is missing or unsafe.")
+
+    try:
+        baseline_text = baseline_path.read_text(encoding="utf-8")
+        baseline = json.loads(baseline_text)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SyncPlanError(f"Stored upstream baseline is unreadable: {exc}") from exc
+    if not isinstance(baseline, dict) or baseline.get("schema_version") != "1.0":
+        raise SyncPlanError("Stored upstream baseline has an unsupported or invalid schema.")
+    if _canonical_upstream_url(str(baseline.get("upstream_repository_url", ""))) != expected_url:
+        raise SyncPlanError("Stored upstream baseline belongs to a different upstream repository.")
+
+    upstream_sha = baseline.get("last_imported_upstream_sha")
+    merge_sha = baseline.get("last_customized_merge_commit_sha")
+    if not isinstance(upstream_sha, str) or not _SHA_RE.fullmatch(upstream_sha):
+        raise SyncPlanError("Stored baseline has an invalid last_imported_upstream_sha.")
+    if not isinstance(merge_sha, str) or not _SHA_RE.fullmatch(merge_sha):
+        raise SyncPlanError("Stored baseline has an invalid last_customized_merge_commit_sha.")
+
+    provenance_value = baseline.get("provenance_path")
+    if not isinstance(provenance_value, str) or not provenance_value.startswith(".usc/provenance/"):
+        raise SyncPlanError("Stored baseline has an invalid provenance_path.")
+    provenance_relative = Path(provenance_value)
+    if provenance_relative.is_absolute() or any(part in ("", ".", "..") for part in provenance_relative.parts):
+        raise SyncPlanError("Stored baseline provenance_path is unsafe.")
+    provenance_path = repo / provenance_relative
+    if provenance_path.is_symlink() or not provenance_path.is_file():
+        raise SyncPlanError("Stored upstream provenance record is missing or unsafe.")
+    try:
+        provenance_text = provenance_path.read_text(encoding="utf-8")
+        provenance = json.loads(provenance_text)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SyncPlanError(f"Stored upstream provenance is unreadable: {exc}") from exc
+    if not isinstance(provenance, dict) or provenance.get("operation") != "accepted_upstream_sync":
+        raise SyncPlanError("Stored provenance record is not an accepted upstream synchronization.")
+    if _canonical_upstream_url(str(provenance.get("upstream_repository_url", ""))) != expected_url:
+        raise SyncPlanError("Stored provenance belongs to a different upstream repository.")
+    if str(provenance.get("upstream_target_sha", "")).lower() != upstream_sha.lower():
+        raise SyncPlanError("Stored baseline and provenance disagree on the imported upstream SHA.")
+    if str(provenance.get("merge_commit_sha", "")).lower() != merge_sha.lower():
+        raise SyncPlanError("Stored baseline and provenance disagree on the customized merge commit.")
+
+    head = _git(repo, "rev-parse", "--verify", "HEAD^{commit}").stdout.strip().lower()
+    for ancestor, descendant, label in (
+        (upstream_sha.lower(), merge_sha.lower(), "upstream baseline"),
+        (merge_sha.lower(), head, "customized history"),
+    ):
+        result = _git(repo, "merge-base", "--is-ancestor", ancestor, descendant, check=False)
+        if result.returncode != 0:
+            raise SyncPlanError(f"Stored {label} is not an ancestor of the expected history.")
+
+    committed_baseline = _git(repo, "show", "HEAD:.usc/upstream-baseline.json").stdout
+    committed_provenance = _git(repo, "show", f"HEAD:{provenance_value}").stdout
+    if committed_baseline != baseline_text or committed_provenance != provenance_text:
+        raise SyncPlanError("Stored baseline or provenance differs from the committed repository records.")
+    return upstream_sha.lower()
 
 
 def _assert_no_custom_git_drivers(repo: Path) -> None:
