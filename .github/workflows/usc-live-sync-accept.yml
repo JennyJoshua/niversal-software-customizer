@@ -1,0 +1,41 @@
+name: USC Live Sync Acceptance
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: ['usc-verify/**']
+
+permissions:
+  contents: read
+
+jobs:
+  live-sync:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the exact verification snapshot
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install USC and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+      - name: Run authenticated live-sync acceptance fixture
+        if: hashFiles('tests/fixtures/live-upstream-sync/trigger.json') != ''
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          USC_SNAPSHOT_SHA: ${{ github.event.workflow_run.head_sha }}
+          USC_SNAPSHOT_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          USC_AUTHENTICATED_RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: python scripts/live_sync_validation.py

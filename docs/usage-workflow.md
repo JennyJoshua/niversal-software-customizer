@@ -214,3 +214,17 @@ usc sync-verify --candidate-report ../candidate-report.json \
 The workflow ID and workflow-file blob SHA are trust anchors and must be obtained from a trusted repository revision and maintained deliberately. The current CI workflow ID is 422317206 and the trusted workflow-file blob SHA on main is `0752aaa0aea0d75a300ed9782761bc3012f6a594`. If the workflow file changes, authentication fails until a human reviews the change and deliberately updates the pinned blob SHA. The authenticated mode currently supports public GitHub repositories; private-repository token handling is not included.
 
 Even authenticated CI does not authenticate the human reviewer or legal/rights acknowledgement. Explicit candidate approval remains mandatory.
+
+
+## Maintainer-only live synchronization fixture
+
+The dedicated fixture under `tests/fixtures/live-upstream-sync/` is used to exercise the full lifecycle against real public GitHub Actions evidence. The fixture is activated only when a published `usc-verify/**` snapshot contains its `trigger.json` marker.
+
+The regular `CI` workflow runs first on the exact snapshot commit. After that push run completes successfully, the separate `USC Live Sync Acceptance` workflow:
+1. Checks out the exact snapshot commit and reads the fixture's pinned base/upstream/customized refs.
+2. Creates a fresh local customized clone and runs `usc sync-candidate`.
+3. Confirms the candidate tree is byte-for-byte identical to the published snapshot tree and that the snapshot has the customized commit as its sole parent.
+4. Runs `usc sync-verify` against the already-completed CI push run, using the pinned CI workflow ID, path, and blob SHA.
+5. Runs `usc sync-accept` only inside the temporary local clone, then asserts both the upstream-only improvement and custom-only feature remain present and the baseline/provenance advance correctly.
+
+The workflow has read-only repository permissions and does not push an accepted product branch. Its acceptance is a disposable integration test, not approval to update a real customized product. The marker is deliberately absent from ordinary project snapshots, so this maintainer test does not run for normal verification branches.
