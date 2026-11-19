@@ -99,7 +99,7 @@ def test_registry_rejects_stale_paths_and_path_traversal(tmp_path):
 
     assert report["status"] == "blocked"
     assert any("missing or stale file" in error for error in report["errors"])
-    assert any("safe repository-relative path" in error for error in report["errors"])
+    assert any("normalized repository-relative path" in error for error in report["errors"])
 
 
 def test_registry_rejects_globs_and_mixed_ownership_preserve_mode(tmp_path):
