@@ -488,14 +488,20 @@ def test_upstream_deletion_of_locally_modified_file_blocks_sync(tmp_path):
     assert (repo / "tracked.txt").read_text(encoding="utf-8") == "custom local content\n"
 
 
-def test_upstream_rename_with_local_edit_blocks_integration(tmp_path):
+def test_upstream_rename_with_unambiguous_local_edit_preserves_local_content(tmp_path):
+    from customizer.sync import create_sync_candidate
     repo, base = init_repo(tmp_path)
     git(repo, "mv", "base.txt", "renamed.txt")
     git(repo, "commit", "-qm", "upstream rename")
     target = git(repo, "rev-parse", "HEAD")
+    git(repo, "branch", "upstream/test", target)
     git(repo, "reset", "--hard", base)
     commit_file(repo, "base.txt", "local edit\n", "local edit")
     plan = create_sync_plan(repo, base, target)
-    assert plan["status"] == "blocked"
-    assert plan["merge_conflicts"]
+    assert plan["status"] == "ready_for_review"
+    assert any(change["status"].startswith("R") for change in plan["upstream_changes"])
+    candidate = tmp_path / "candidate"
+    result = create_sync_candidate(repo, base, target, candidate, approved=True)
+    assert result["status"] == "candidate_ready_for_review"
+    assert (candidate / "renamed.txt").read_text(encoding="utf-8") == "local edit\n"
     assert (repo / "base.txt").read_text(encoding="utf-8") == "local edit\n"
