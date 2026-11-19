@@ -77,7 +77,24 @@ Build a reusable, configuration-driven framework that helps produce separately b
 - CI passes and provenance is recorded.
 
 
-## Customization registry v1 requirements — validation implemented
+## Customization registry v1 and registry-aware synchronization — implemented
+
+- Store a versioned declarative registry at `.usc/customizations.json`.
+- Validate stable feature IDs, categories, purpose, protection modes, exact existing paths, explicit `custom_only` or `mixed` ownership, test identifiers, and safe evidence references.
+- Reject stale/missing paths, symlinks, globs, absolute/traversal paths, reserved metadata paths, duplicate IDs/paths, inconsistent ownership, unsupported fields, and unsafe evidence URLs.
+- Provide the read-only CLI command `usc customization-check --path <project>` and an editor-facing JSON Schema.
+- Feed valid registry entries into read-only sync planning; report affected customizations and required regression-test IDs.
+- Block invalid registries, unsafe protected-path changes, affected `block_for_review` entries, and unmapped overlapping changes.
+- Require passing evidence for every required test ID, bound to the exact candidate tree SHA; recompute requirements during acceptance.
+- A missing registry is `not_configured` and preserves previous behaviour.
+- USC validates supplied test evidence but does not execute project-specific tests or prove semantic preservation.
+
+## Future selective-sync requirements
+
+- Add JSON three-way structured merging only after source-fidelity and conflict tests are designed; YAML support is later and restricted.
+- Structured merges must preserve unknown fields, reject ambiguous list/delete-edit conflicts, validate output, and remain inside the isolated candidate workflow.
+
+# Customization registry v1 requirements — validation implemented
 
 - Store a versioned declarative registry at `.usc/customizations.json`.
 - Require stable feature IDs, categories, purpose, protection mode, exact file paths, and explicit `custom_only` or `mixed` ownership.
