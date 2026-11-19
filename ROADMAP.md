@@ -11,7 +11,7 @@
 - [x] Isolated, uncommitted candidate integration implemented and merged (PR #9).
 - [x] Authenticate public GitHub Actions run metadata, jobs, workflow identity, and exact candidate tree against pinned trust anchors.
 - [x] Create an isolated one-parent verification snapshot commit/ref with an exact candidate tree, without changing product/candidate HEAD or baseline.
-- [ ] Verify the published snapshot end-to-end against a real GitHub Actions run and connect it to acceptance.
+- [x] Verify a published snapshot end-to-end against a real GitHub Actions run and connect it to authenticated verification and acceptance (synthetic maintainer fixture).
 
 ## Phase 3 — Safe upstream synchronization
 
@@ -27,7 +27,7 @@
 - [x] Require timezone-aware verification timestamps, reviewer identity, passing test entries, and evidence references.
 - [x] Authenticate CI run metadata and pin the workflow file to a trusted blob SHA.
 - [x] Create an exact-tree verification snapshot locally without changing the original product branch or candidate merge state.
-- [ ] Validate a real published snapshot run through verification and acceptance end-to-end; document safe cleanup of temporary verification refs.
+- [x] Validate a published snapshot through authenticated verification and acceptance end-to-end using synthetic GitHub fixtures.\n- [ ] Clean up retained temporary verification/test refs; the connected GitHub actions currently do not expose a safe delete-ref operation.
 - [x] Resolve the stored upstream baseline by default after validating committed baseline/provenance identity and ancestry; retain explicit SHA overrides.
 - [x] Add explicit candidate acceptance with original-HEAD/branch/clean-tree rechecks and fast-forward-only update.
 - [x] Advance the stored upstream baseline only with the accepted branch update.
@@ -79,7 +79,7 @@ The following status reflects the synthetic live remote test and current failure
 3. [x] Cover core deletion/rename cases: upstream deletion of a locally modified file blocks; deletion of an unmodified upstream-owned file integrates; unambiguous upstream rename preserves a local edit; rename/rename and delete/rename conflicts block.
 4. [ ] Clean up temporary live-test and verification refs. The available GitHub integration currently has no delete-ref operation; do not force-update or delete these refs through an unsupported path.
 5. [x] Implement v1 declarative customization registry schema, exact-path validation, protection-mode checks, and read-only `usc customization-check` CLI.
-6. [ ] Integrate registry entries into sync planning and acceptance; select targeted regression tests and block mixed/unknown mappings that cannot be verified.
+6. [x] Integrate registry entries into sync planning and acceptance; require evidence for every declared regression test ID against the exact candidate tree. USC validates evidence but does not execute project tests.
 7. [ ] Add JSON three-way structured merge with schema validation and conservative conflict behaviour.
 8. [ ] Consider a restricted YAML merge only after JSON fidelity and conflict tests pass.
 9. [ ] Add optional scheduled upstream monitoring that creates review PRs only; never merge or advance product baselines automatically.
@@ -89,7 +89,7 @@ The following status reflects the synthetic live remote test and current failure
 ### Live validation evidence
 
 - Snapshot commit: `04f4f14b01be8be97bf361490c7167bc3ec0722c`
-- Completed authenticated CI push run: https://github.com/JennyJoshua/niversal-software-customizer/actions/runs/44633531926
+- Completed authenticated CI push run: https://github.com/JennyJoshua/universal-software-customizer/actions/runs/44633531926
 - Follow-on live acceptance workflow: https://github.com/JennyJoshua/niversal-software-customizer/actions/runs/44633580230
 - Failure-matrix PR #21: https://github.com/JennyJoshua/niversal-software-customizer/pull/21
 - Rights/deletion PR #22: https://github.com/JennyJoshua/niversal-software-customizer/pull/22
