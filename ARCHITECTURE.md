@@ -65,11 +65,3 @@ The read-only `usc customization-check` command validates `.usc/customizations.j
 Verification requires passing evidence for every required test ID, tied to the exact candidate tree SHA. Acceptance recomputes the plan and rejects stale, missing, failed, or mismatched evidence. USC validates supplied evidence but does not execute project tests or guarantee semantic preservation. The existing three-way Git workflow, isolated candidate, rights review, provenance, and explicit approval gates remain authoritative.
 
 Format-aware structured merging remains future work. JSON is the first candidate format; YAML is deferred until a safe subset and source-fidelity guarantees are demonstrated. Structured merge adapters must be isolated, three-way, schema-validated, and subordinate to the same verification, rights, provenance, and approval gates as ordinary sync.
-
-# Customization registry v1 and selective synchronization
-
-Registry v1 is a read-only validator for `.usc/customizations.json`, exposed through `usc customization-check`. It validates stable feature IDs, categories, exact existing paths, path ownership, protection modes, test identifiers, and safe evidence references. It supplements the protection policy but does not yet feed into the sync planner or change synchronization behaviour.
-
-The next architecture step is registry-aware planning: correlate upstream changed paths with registered custom features, report affected features and required tests, and block unknown mappings. A path shared by upstream and custom functionality must be treated as mixed ownership. If safe attribution is uncertain, stop for review rather than dropping upstream changes or overwriting local behaviour.
-
-Registry validation does not execute tests or enforce acceptance. Only after registry-aware planning, enforcement, and preservation tests are reliable should the architecture add structured merges. JSON is the first candidate format; YAML is deferred until a safe subset and source-fidelity guarantees are demonstrated. Structured merge adapters must be isolated, three-way, schema-validated, and subordinate to the same verification, rights, provenance, and approval gates as ordinary sync.
