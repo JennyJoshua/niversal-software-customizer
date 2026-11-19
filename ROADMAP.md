@@ -27,8 +27,9 @@
 - [x] Add explicit candidate acceptance with original-HEAD/branch/clean-tree rechecks and fast-forward-only update.
 - [x] Advance the stored upstream baseline only with the accepted branch update.
 - [x] Record sync provenance, reviewer/test evidence, rights acknowledgement, and resulting merge commit.
-- [ ] Add automated candidate discard/recovery and interruption recovery tests.
-- [ ] Test deletion/rename edge cases and end-to-end failed acceptance/recovery.
+- [x] Add explicit recovery for interruption after candidate provenance/baseline commit and before original fast-forward.
+- [x] Add deletion and rename-with-local-edit conflict tests.
+- [ ] Add recovery for interruption before provenance commit, candidate discard automation, and broader failure-injection tests.
 
 ## Phase 4 — Configuration and branding planning
 

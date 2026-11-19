@@ -144,11 +144,6 @@ usc sync-verify --candidate-report ../candidate-report.json \
 
 The verifier checks the candidate branch, original customized HEAD, upstream MERGE_HEAD, unresolved conflicts, unstaged/untracked changes, tree SHA, timezone-aware reviewer timestamp, and successful test-evidence structure. It does not execute tests or independently authenticate external CI evidence. The resulting report is not legal approval and does not accept the candidate or update the original repository.
 
-## Candidate acceptance (not yet implemented)
-
-Even a `verification_passed` report does not change the original customized repository. Explicit acceptance, race-safe original-HEAD checks, baseline advancement, and complete provenance are still future work. Until then, keep the original customized ref authoritative.
-
-
 ## Explicitly accept a verified candidate
 
 Acceptance is a separate, mutating step. Before running it, inspect the candidate diff, verify the CI/test evidence yourself, and confirm that the candidate report and verification report belong to the same candidate. The original customized repository must still be on the exact branch and commit recorded when the candidate was created, with a clean working tree.
@@ -168,3 +163,17 @@ usc sync-accept --path ./customized-repository \
 Both flags are deliberate gates: `--evidence-reviewed` acknowledges that supplied test evidence is not independently authenticated; `--approve` authorizes updating the original customized branch. The command rechecks the source HEAD/branch/clean state, rechecks the candidate merge and verified tree SHA, creates the merge and provenance commits in the candidate clone, then fast-forwards the original branch only if its recorded starting point is still unchanged.
 
 On success, the original branch contains the upstream merge plus `.usc/upstream-baseline.json` and a detailed `.usc/provenance/` record. The baseline advances to the selected upstream target only as part of this successful fast-forward. If any pre-update check fails, the original branch remains unchanged. Candidate acceptance never runs project tests or scripts; tests must already have been run in an isolated environment.
+
+
+## Recover an interrupted acceptance
+
+If acceptance prepared and committed the candidate merge/provenance but stopped before the original branch fast-forward, use the recovery command:
+
+\`\`\`bash
+usc sync-recover --path ./customized-repository \\
+  --candidate-report ../candidate-report.json \\
+  --approve \\
+  --output ../recovery-report.json
+\`\`\`
+
+Recovery validates the candidate's merge parents, committed provenance, and baseline before fast-forwarding. It refuses a changed or dirty original branch. If interruption occurred before the candidate provenance/baseline commit was completed, discard the candidate and create a fresh candidate; the original branch remains unchanged. Recovery is idempotent after a successful fast-forward.
