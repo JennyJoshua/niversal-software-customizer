@@ -536,3 +536,102 @@ def test_recovery_rejects_modified_committed_provenance(tmp_path, monkeypatch):
         recover_sync_acceptance(repo, candidate_path, approved=True)
     assert git(repo, "rev-parse", "HEAD") == original_head
     assert not (repo / "upstream.txt").exists()
+
+
+def test_acceptance_rejects_candidate_tampering_after_verification(tmp_path):
+    from customizer.acceptance import accept_sync_candidate
+    from customizer.sync import SyncPlanError
+
+    repo, _, _, workspace, _, candidate_path, verification_path = _make_verified_candidate(tmp_path)
+    original_head = git(repo, "rev-parse", "HEAD")
+    (workspace / "custom.txt").write_text("tampered after verification\n", encoding="utf-8")
+
+    with pytest.raises(SyncPlanError, match="working files changed after verification"):
+        accept_sync_candidate(
+            repo, candidate_path, verification_path,
+            upstream_url="https://github.com/upstream/sample-project",
+            approved=True, evidence_reviewed=True,
+        )
+
+    assert git(repo, "rev-parse", "HEAD") == original_head
+    assert not (repo / "upstream.txt").exists()
+    assert not (repo / ".usc" / "upstream-baseline.json").exists()
+
+
+def test_recovery_rejects_baseline_provenance_mismatch(tmp_path, monkeypatch):
+    import json
+    import customizer.acceptance as acceptance
+    from customizer.acceptance import recover_sync_acceptance
+    from customizer.sync import SyncPlanError
+
+    repo, _, target, workspace, _, candidate_path, verification_path = _make_verified_candidate(tmp_path)
+    original_head = git(repo, "rev-parse", "HEAD")
+    original_git = acceptance._git
+
+    def fail_fetch(path, *args, **kwargs):
+        if Path(path).resolve() == repo.resolve() and "fetch" in args:
+            raise SyncPlanError("simulated interruption before original fast-forward")
+        return original_git(path, *args, **kwargs)
+
+    monkeypatch.setattr(acceptance, "_git", fail_fetch)
+    with pytest.raises(SyncPlanError, match="simulated interruption"):
+        acceptance.accept_sync_candidate(
+            repo, candidate_path, verification_path,
+            upstream_url="https://github.com/upstream/sample-project",
+            approved=True, evidence_reviewed=True,
+        )
+    monkeypatch.setattr(acceptance, "_git", original_git)
+
+    baseline_path = workspace / ".usc" / "upstream-baseline.json"
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    baseline["last_imported_upstream_sha"] = "0" * 40
+    baseline_path.write_text(json.dumps(baseline, sort_keys=True) + "\n", encoding="utf-8")
+    git(workspace, "config", "user.name", "USC tests")
+    git(workspace, "config", "user.email", "tests@example.invalid")
+    git(workspace, "add", ".usc/upstream-baseline.json")
+    git(workspace, "commit", "-qm", "tamper with committed upstream baseline")
+
+    with pytest.raises(SyncPlanError, match="baseline does not point to the selected upstream target"):
+        recover_sync_acceptance(repo, candidate_path, approved=True)
+
+    assert git(repo, "rev-parse", "HEAD") == original_head
+    assert not (repo / "upstream.txt").exists()
+    assert target != "0" * 40
+
+
+def test_recovery_refuses_interruption_before_provenance_commit(tmp_path):
+    from customizer.acceptance import recover_sync_acceptance
+    from customizer.sync import SyncPlanError
+
+    repo, _, _, workspace, _, candidate_path, _ = _make_verified_candidate(tmp_path)
+    original_head = git(repo, "rev-parse", "HEAD")
+    git(workspace, "config", "user.name", "USC tests")
+    git(workspace, "config", "user.email", "tests@example.invalid")
+    git(workspace, "commit", "--no-edit")
+
+    with pytest.raises(SyncPlanError, match="provenance is incomplete"):
+        recover_sync_acceptance(repo, candidate_path, approved=True)
+
+    assert git(repo, "rev-parse", "HEAD") == original_head
+    assert not (repo / "upstream.txt").exists()
+    assert not (repo / ".usc" / "upstream-baseline.json").exists()
+
+
+def test_upstream_and_custom_renames_of_same_file_are_blocked(tmp_path):
+    repo, base = init_repo(tmp_path)
+    git(repo, "mv", "base.txt", "upstream-renamed.txt")
+    git(repo, "commit", "-qm", "upstream rename")
+    target = git(repo, "rev-parse", "HEAD")
+    git(repo, "branch", "upstream/test", target)
+    git(repo, "reset", "--hard", base)
+    git(repo, "mv", "base.txt", "custom-renamed.txt")
+    git(repo, "commit", "-qm", "custom rename")
+    customized = git(repo, "rev-parse", "HEAD")
+
+    plan = create_sync_plan(repo, base, target)
+
+    assert plan["status"] == "blocked"
+    assert plan["merge_conflicts"]
+    assert git(repo, "rev-parse", "HEAD") == customized
+    assert (repo / "custom-renamed.txt").read_text(encoding="utf-8") == "base\n"
+    assert not (repo / "upstream-renamed.txt").exists()
