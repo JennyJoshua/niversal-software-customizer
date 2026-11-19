@@ -187,9 +187,18 @@ The optional authenticated mode of sync verification checks a public GitHub Acti
 
 A run URL alone is not evidence. Do not copy a green run from another branch, repository, workflow, or candidate.
 
-The candidate merge is currently uncommitted. To authenticate a run, a verification snapshot must first be committed and pushed to the customized fork on an isolated usc-verify/ branch, with its tree exactly equal to the candidate tree. The snapshot must not advance the product branch or baseline. The dedicated snapshot helper and full lifecycle integration are a separate implementation batch; until that exists, continue using the unauthenticated evidence mode and retain the explicit human evidence-review gate.
+The candidate merge is currently uncommitted. Create a verification-only snapshot commit and branch without changing the candidate branch or product branch:
 
-Once a matching snapshot run exists, authenticated verification uses these additional options:
+Run this command. It creates a one-parent snapshot commit whose tree exactly matches the candidate and prints a push command; it does not push automatically:
+
+\`\`\`bash
+usc sync-snapshot --path ./customized-repository \\\
+  --candidate-report ../candidate-report.json \\\
+  --push-url https://github.com/OWNER/FORK.git \\\
+  --output ../snapshot-report.json
+\`\`\`
+
+Run the reported push command using your normal GitHub authentication. CI runs on branches under usc-verify/**. This temporary branch is for verification only and must not be merged into the product branch. After the run completes, use its URL with the snapshot report:
 
 ```bash
 usc sync-verify --candidate-report ../candidate-report.json \
@@ -202,6 +211,6 @@ usc sync-verify --candidate-report ../candidate-report.json \
   --output ../verification-report.json
 ```
 
-The workflow ID and workflow-file blob SHA are trust anchors and must be obtained from a trusted repository revision and maintained deliberately. If the workflow file changes, authentication fails until a human reviews and updates the trust anchor. The authenticated mode currently supports public GitHub repositories; private-repository token handling is not included.
+The workflow ID and workflow-file blob SHA are trust anchors and must be obtained from a trusted repository revision and maintained deliberately. The current CI workflow ID is 422317206; obtain the current workflow blob SHA from the trusted fork revision after the snapshot-branch trigger change is merged. If the workflow file changes, authentication fails until a human reviews and updates the trust anchor. The authenticated mode currently supports public GitHub repositories; private-repository token handling is not included.
 
 Even authenticated CI does not authenticate the human reviewer or legal/rights acknowledgement. Explicit candidate approval remains mandatory.

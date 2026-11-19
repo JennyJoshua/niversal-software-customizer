@@ -19,13 +19,14 @@ def create_sync_verification(
     workflow_id: int | None = None,
     workflow_path: str | None = None,
     workflow_blob_sha: str | None = None,
+    snapshot_report_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Bind reviewer evidence to the candidate tree and optionally authenticate GitHub Actions."""
-    github_values = (github_run_url, github_repository, workflow_id, workflow_path, workflow_blob_sha)
+    github_values = (github_run_url, github_repository, workflow_id, workflow_path, workflow_blob_sha, snapshot_report_path)
     if any(value is not None for value in github_values) and not all(value is not None for value in github_values):
         raise SyncPlanError(
             "GitHub Actions authentication requires --github-run-url, --github-repo, "
-            "--workflow-id, --workflow-path, and --workflow-blob-sha together."
+            "--workflow-id, --workflow-path, --workflow-blob-sha, and --snapshot-report together."
         )
 
     report_file = Path(candidate_report_path).expanduser().resolve()
@@ -121,6 +122,30 @@ def create_sync_verification(
             raise SyncPlanError("verification_source must exactly match the authenticated GitHub Actions run URL.")
         if not any(item["evidence_ref"].strip() == github_run_url for item in tests):
             raise SyncPlanError("At least one test result must reference the exact authenticated GitHub Actions run URL.")
+        snapshot_file = Path(snapshot_report_path).expanduser().resolve()
+        if not snapshot_file.is_file():
+            raise SyncPlanError("Authenticated verification requires an existing snapshot report.")
+        try:
+            snapshot = json.loads(snapshot_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise SyncPlanError(f"Verification snapshot report is unreadable: {exc}") from exc
+        if not isinstance(snapshot, dict) or snapshot.get("operation") != "upstream_sync_verification_snapshot" or snapshot.get("status") != "snapshot_ready_to_publish":
+            raise SyncPlanError("The supplied snapshot report is not a ready USC verification snapshot.")
+        if Path(str(snapshot.get("candidate_path", ""))).expanduser().resolve() != candidate:
+            raise SyncPlanError("Verification snapshot belongs to a different candidate workspace.")
+        if snapshot.get("candidate_branch") != branch or str(snapshot.get("candidate_tree_sha", "")).lower() != tree_sha:
+            raise SyncPlanError("Verification snapshot does not match the current candidate branch and tree.")
+        snapshot_sha = str(snapshot.get("snapshot_commit_sha", "")).lower()
+        snapshot_branch = snapshot.get("snapshot_branch")
+        if snapshot.get("parent_sha") != expected_head or str(snapshot.get("repository", "")).lower() != str(github_repository).lower():
+            raise SyncPlanError("Verification snapshot parent or repository does not match the trusted candidate.")
+        if not snapshot_sha or not isinstance(snapshot_branch, str) or not snapshot_branch.startswith("usc-verify/"):
+            raise SyncPlanError("Verification snapshot commit or branch identity is invalid.")
+        local_ref = _git(candidate, "rev-parse", "--verify", f"refs/heads/{snapshot_branch}").stdout.strip().lower()
+        local_tree = _git(candidate, "rev-parse", "--verify", f"{snapshot_sha}^{{tree}}").stdout.strip().lower()
+        local_parents = _git(candidate, "rev-list", "--parents", "-n", "1", snapshot_sha).stdout.strip().split()
+        if local_ref != snapshot_sha or local_tree != tree_sha or local_parents != [snapshot_sha, expected_head]:
+            raise SyncPlanError("Local verification snapshot ref, tree, or parent identity has changed.")
         github_evidence = authenticate_github_actions_run(
             github_run_url,
             expected_repository=str(github_repository),
@@ -128,6 +153,9 @@ def create_sync_verification(
             expected_workflow_id=int(workflow_id),
             expected_workflow_path=str(workflow_path),
             expected_workflow_blob_sha=str(workflow_blob_sha),
+            expected_head_sha=snapshot_sha,
+            expected_parent_sha=expected_head,
+            expected_branch=snapshot_branch,
         )
 
     return {
