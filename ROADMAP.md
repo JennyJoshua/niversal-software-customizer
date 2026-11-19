@@ -9,7 +9,7 @@
 - [x] Safe upstream synchronization requirements and architecture specified (PR #7).
 - [x] Read-only, baseline-aware upstream sync planner implemented and merged (PR #8).
 - [x] Isolated, uncommitted candidate integration implemented and merged (PR #9).
-- [ ] Candidate verification, acceptance, and baseline advancement.
+- [ ] Trusted candidate verification and evidence authentication.
 
 ## Phase 3 — Safe upstream synchronization
 
@@ -24,8 +24,10 @@
 - [x] Validate external test evidence against the candidate branch, merge state, and exact Git tree SHA.
 - [x] Require timezone-aware verification timestamps, reviewer identity, passing test entries, and evidence references.
 - [ ] Authenticate CI evidence independently and define a trusted verification policy.
-- [ ] Add explicit candidate acceptance, original-HEAD compare-and-swap, and baseline advancement.
-- [ ] Add automated candidate discard/recovery and complete provenance.
+- [x] Add explicit candidate acceptance with original-HEAD/branch/clean-tree rechecks and fast-forward-only update.
+- [x] Advance the stored upstream baseline only with the accepted branch update.
+- [x] Record sync provenance, reviewer/test evidence, rights acknowledgement, and resulting merge commit.
+- [ ] Add automated candidate discard/recovery and interruption recovery tests.
 - [ ] Test deletion/rename edge cases and end-to-end failed acceptance/recovery.
 
 ## Phase 4 — Configuration and branding planning
