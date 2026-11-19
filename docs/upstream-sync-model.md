@@ -115,7 +115,7 @@ The candidate report is emitted by `sync-candidate --output ../candidate-report.
 - Reviewer identity and an ISO-8601 timestamp with an explicit timezone.
 - The rights-review acknowledgement matching the candidate report.
 
-The verifier re-checks candidate branch, original customized HEAD, upstream MERGE_HEAD, unresolved conflicts, unstaged/untracked changes, and exact tree SHA. Stale or modified candidates and failed test evidence are blocked. It never runs source scripts or tests.
+The verifier re-checks candidate branch, original customized HEAD, upstream MERGE_HEAD, unresolved conflicts, unstaged/untracked changes, and exact tree SHA. It also requires a passing result with a non-empty evidence reference for every registry-required test ID and records the required/verified ID sets. Stale or modified candidates and failed or incomplete test evidence are blocked. It never runs source scripts or tests.
 
 **Trust limitation:** evidence is reviewer-supplied JSON. The verifier checks its structure and binds it to the candidate tree, but does not independently authenticate the CI provider, log URLs, reviewer identity, or test execution. The report explicitly sets `evidence_authenticated=false`. A trusted CI evidence policy is still required before automatic acceptance.
 
@@ -142,7 +142,7 @@ Acceptance:
 
 If a pre-update gate fails, the original branch and baseline remain unchanged. Acceptance does not run project scripts or tests. The baseline and provenance become part of the original branch only when the fast-forward succeeds.
 
-The current verifier still trusts reviewer-supplied evidence structure and references; it does not independently authenticate GitHub Actions. Automated candidate discard/interruption recovery and a trusted CI attestation policy remain outstanding.
+The verifier supports independently authenticated GitHub Actions evidence when supplied with the trusted repository, workflow ID/path/blob SHA, and exact-tree snapshot report. Reviewer-supplied evidence remains explicitly unauthenticated when authenticated mode is not used. Automated candidate discard and recovery before provenance/baseline commits remain outstanding.
 
 
 ## Recovery after an interrupted acceptance
@@ -201,7 +201,7 @@ The synthetic public-GitHub end-to-end fixture completed successfully:
 - Snapshot tree: `6510cfc50e811eef6e7ca6fbae0176e488391b19`
 - Customized fixture commit: `7dfc827e516fc5dbcc207f3871460581623f88f0`
 - Upstream target: `bf5199c67ec6797baa54ba8a3b12671f1ff25ff5`
-- Authenticated CI push run: https://github.com/JennyJoshua/niversal-software-customizer/actions/runs/44633531926
+- Authenticated CI push run: https://github.com/JennyJoshua/universal-software-customizer/actions/runs/44633531926
 - Follow-on acceptance workflow: https://github.com/JennyJoshua/niversal-software-customizer/actions/runs/44633580230
 
 The test recreated the candidate from the fixture's public GitHub refs, confirmed its tree exactly matched the published snapshot, authenticated the completed CI run, and accepted the candidate only in a disposable local clone. It verified that the custom-only feature remained intact, the upstream-only improvement was included, and baseline/provenance advanced to the selected upstream target.
