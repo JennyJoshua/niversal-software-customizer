@@ -10,7 +10,7 @@ This is not a universal source-code converter, reverse-engineering tool, or meth
 
 ## Current status
 
-**Foundation + static inspection + rights-evidence reporting + upstream sync planning, isolated candidate integration, explicit acceptance, provenance, recovery, GitHub Actions evidence authentication, and customization registry v1 validation.** A synthetic public-GitHub snapshot-to-authenticated-verification-to-acceptance lifecycle has passed. Snapshot publication remains a separate manual push in normal user workflows. The new customization registry command validates declarations and referenced paths only; it does not yet enforce feature-level preservation during synchronization. Branding transformations and production adapters are not yet implemented.
+**Foundation + static inspection + rights-evidence reporting + upstream sync planning, isolated candidate integration, explicit acceptance, provenance, recovery, GitHub Actions evidence authentication, customization registry v1 validation, and registry-aware upstream change impact reporting.** A synthetic public-GitHub snapshot-to-authenticated-verification-to-acceptance lifecycle has passed. Snapshot publication remains a separate manual push in normal user workflows. Registry-aware planning identifies affected customizations and required regression test IDs, but does not execute those tests or yet enforce their evidence at acceptance. Branding transformations and production adapters are not yet implemented.
 
 ## First capabilities
 
