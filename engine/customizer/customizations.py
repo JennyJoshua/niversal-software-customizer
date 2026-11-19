@@ -317,3 +317,106 @@ def _report(status: str, errors: list[str], warnings: list[str], count: int) -> 
             "Registry validation failed. Correct the reported issues before relying on these declarations."
         ),
     }
+
+
+
+def analyze_customization_impact(
+    repository: str | Path,
+    upstream_changes: list[dict[str, Any]],
+    local_changes: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Classify upstream changes against the validated customization registry.
+
+    This is read-only. It never executes tests or changes repository files.
+    """
+    report = inspect_customization_registry(repository)
+    empty = {
+        "status": report.get("status", "blocked"),
+        "registry_status": report.get("status", "blocked"),
+        "affected_customizations": [],
+        "required_test_ids": [],
+        "unmapped_overlaps": [],
+        "blocked_reasons": [],
+        "feature_protection_enforced": False,
+    }
+    if report.get("status") == "not_configured":
+        return {**empty, "status": "not_configured", "blocked_reasons": []}
+    if report.get("status") != "valid":
+        return {
+            **empty,
+            "status": "blocked",
+            "blocked_reasons": ["Customization registry is invalid; upstream synchronization cannot rely on it."],
+            "registry_errors": report.get("errors", []),
+        }
+
+    upstream_by_path: dict[str, list[dict[str, Any]]] = {}
+    local_paths = {path for item in local_changes for path in item.get("paths", [])}
+    for change in upstream_changes:
+        for path in change.get("paths", []):
+            upstream_by_path.setdefault(path, []).append(change)
+
+    affected: list[dict[str, Any]] = []
+    mapped_upstream_paths: set[str] = set()
+    required_tests: set[str] = set()
+    blocked: list[str] = []
+    for entry in report.get("entries", []):
+        path_ownership = {item["path"]: item["ownership"] for item in entry.get("paths", [])}
+        matched = sorted(set(path_ownership) & set(upstream_by_path))
+        if not matched:
+            continue
+        mapped_upstream_paths.update(matched)
+        mode = entry.get("protection_mode")
+        tests = sorted(set(entry.get("test_ids", [])))
+        affected.append({
+            "id": entry.get("id"),
+            "name": entry.get("name"),
+            "protection_mode": mode,
+            "changed_paths": matched,
+            "ownership": {path: path_ownership[path] for path in matched},
+            "required_test_ids": tests if mode == "require_regression_tests" else [],
+        })
+        if mode == "block_for_review":
+            blocked.append(
+                f"Customization {entry.get('id')} is configured to block for human review."
+            )
+        if mode == "require_regression_tests":
+            required_tests.update(tests)
+        for path in matched:
+            ownership = path_ownership[path]
+            statuses = [
+                change.get("status", "")
+                for change in upstream_by_path[path]
+            ]
+            if ownership == "custom_only":
+                blocked.append(
+                    f"Upstream changed custom-only path {path!r} registered by {entry.get('id')}; manual reconciliation is required."
+                )
+            if any(str(status).startswith("D") for status in statuses) and ownership == "mixed":
+                blocked.append(
+                    f"Upstream deletes mixed-ownership path {path!r} registered by {entry.get('id')}; manual review is required."
+                )
+
+    overlap_paths = sorted(
+        set(upstream_by_path) & local_paths
+    )
+    unmapped_overlaps = sorted(set(overlap_paths) - mapped_upstream_paths)
+    if unmapped_overlaps:
+        blocked.append(
+            "Overlapping upstream/local changes are not mapped to a registered customization: "
+            + ", ".join(unmapped_overlaps)
+            + "."
+        )
+
+    status = "blocked" if blocked else ("review_required" if affected else "clear")
+    return {
+        "status": status,
+        "registry_status": "valid",
+        "affected_customizations": affected,
+        "required_test_ids": sorted(required_tests),
+        "unmapped_overlaps": unmapped_overlaps,
+        "blocked_reasons": list(dict.fromkeys(blocked)),
+        "feature_protection_enforced": False,
+        "note": (
+            "Impact analysis is read-only. Required tests are identified but are not executed or enforced as acceptance evidence in this milestone."
+        ),
+    }
