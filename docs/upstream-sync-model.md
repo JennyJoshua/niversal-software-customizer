@@ -124,11 +124,6 @@ The verifier re-checks candidate branch, original customized HEAD, upstream MERG
 
 **Trust limitation:** evidence is reviewer-supplied JSON. The verifier checks its structure and binds it to the candidate tree, but does not independently authenticate the CI provider, log URLs, reviewer identity, or test execution. The report explicitly sets `evidence_authenticated=false`. A trusted CI evidence policy is still required before automatic acceptance.
 
-## Acceptance remains outstanding
-
-A `verification_passed` report does not change the original customized repository. The next batch must add explicit acceptance with compare-and-swap protection against an original HEAD change, ensure the candidate still matches the verified tree, commit the merge with the customized commit as first parent and upstream target as second parent, advance the upstream baseline only after success, and write complete provenance. Failure must leave the original customized ref and baseline unchanged.
-
-
 ## Current implementation: explicit acceptance and baseline advancement
 
 After successful evidence validation and a human review of the evidence source, run:
