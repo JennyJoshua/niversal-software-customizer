@@ -208,3 +208,59 @@ def test_registry_cli_exit_codes_distinguish_valid_missing_and_blocked(tmp_path,
     write_registry(root, data)
     assert main(["customization-check", "--path", str(root)]) == 2
     assert json.loads(capsys.readouterr().out)["status"] == "blocked"
+
+
+def test_registry_rejects_duplicate_json_object_keys(tmp_path):
+    root = make_project(tmp_path)
+    directory = root / ".usc"
+    directory.mkdir()
+    (directory / "customizations.json").write_text(
+        '{"schema_version":"1.0","schema_version":"1.0","customizations":[]}',
+        encoding="utf-8",
+    )
+
+    report = inspect_customization_registry(root)
+
+    assert report["status"] == "blocked"
+    assert any("duplicate JSON object key" in error for error in report["errors"])
+
+
+def test_registry_rejects_non_string_enum_values_without_crashing(tmp_path):
+    root = make_project(tmp_path)
+    data = valid_registry()
+    data["customizations"][0]["category"] = ["branding"]
+    data["customizations"][1]["protection_mode"] = {"mode": "require_regression_tests"}
+    data["customizations"][1]["paths"][0]["ownership"] = ["mixed"]
+    write_registry(root, data)
+
+    report = inspect_customization_registry(root)
+
+    assert report["status"] == "blocked"
+    assert any(".category must be one of" in error for error in report["errors"])
+    assert any(".protection_mode must be one of" in error for error in report["errors"])
+    assert any(".ownership must be" in error for error in report["errors"])
+
+
+def test_registry_rejects_non_normalized_paths(tmp_path):
+    root = make_project(tmp_path)
+    data = valid_registry()
+    data["customizations"][0]["paths"][0]["path"] = "src//branding.json"
+    write_registry(root, data)
+
+    report = inspect_customization_registry(root)
+
+    assert report["status"] == "blocked"
+    assert any("normalized repository-relative path" in error for error in report["errors"])
+
+
+def test_registry_rejects_symlinked_metadata_directory(tmp_path):
+    root = make_project(tmp_path)
+    external = tmp_path / "external-usc"
+    external.mkdir()
+    (external / "customizations.json").write_text(json.dumps(valid_registry()), encoding="utf-8")
+    (root / ".usc").symlink_to(external, target_is_directory=True)
+
+    report = inspect_customization_registry(root)
+
+    assert report["status"] == "blocked"
+    assert any("metadata directory must not be a symlink" in error for error in report["errors"])
