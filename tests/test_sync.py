@@ -753,7 +753,7 @@ def _registry_repo(tmp_path, *, ownership="mixed", protection_mode="require_regr
             "category": "feature_workflow",
             "protection_mode": protection_mode,
             "paths": [{"path": "feature.py", "ownership": ownership}],
-            "test_ids": ["tests/test_feature.py"] if protection_mode == "require_regression_tests" else [],
+            "test_ids": ["feature-regression"] if protection_mode == "require_regression_tests" else [],
             "review_note": "Human review required" if protection_mode == "block_for_review" else None,
         }],
     }), encoding="utf-8")
@@ -786,7 +786,7 @@ def test_registry_required_tests_are_reported_in_sync_plan(tmp_path):
     assert plan["status"] == "ready_for_review"
     assert plan["customization_impact"]["status"] == "review_required"
     assert plan["customization_impact"]["affected_customizations"][0]["id"] == "custom-feature"
-    assert plan["required_customization_test_ids"] == ["tests/test_feature.py"]
+    assert plan["required_customization_test_ids"] == ["feature-regression"]
     assert plan["integration_performed"] is False
 
 
@@ -812,14 +812,13 @@ def test_upstream_deletion_of_mixed_customization_path_blocks_sync_plan(tmp_path
 
 def test_invalid_registry_blocks_sync_plan(tmp_path):
     repo, base = _registry_repo(tmp_path)
+    target = _upstream_target(repo, base)
     registry = repo / ".usc" / "customizations.json"
     registry.write_text("{invalid json", encoding="utf-8")
     git(repo, "add", ".usc/customizations.json")
     git(repo, "commit", "-qm", "corrupt registry")
     customized = git(repo, "rev-parse", "HEAD")
-    target = _upstream_target(repo, base)
-    # Restore the customized branch to the registry-corrupt commit while retaining the upstream target.
-    git(repo, "reset", "--hard", customized)
+    # Keep the corrupt local registry change separate from the upstream history.
 
     plan = create_sync_plan(repo, base, target)
 
@@ -840,7 +839,7 @@ def test_registry_impact_matches_both_sides_of_upstream_rename(tmp_path):
     assert plan["status"] == "ready_for_review"
     affected = plan["customization_impact"]["affected_customizations"]
     assert affected[0]["changed_paths"] == ["feature.py"]
-    assert plan["required_customization_test_ids"] == ["tests/test_feature.py"]
+    assert plan["required_customization_test_ids"] == ["feature-regression"]
 
 
 def test_unmapped_overlapping_change_is_blocked_when_registry_exists(tmp_path):
