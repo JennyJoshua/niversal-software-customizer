@@ -963,4 +963,4 @@ def test_registry_acceptance_succeeds_only_with_exact_required_test_evidence(tmp
     )
 
     assert result["status"] == "accepted"
-    assert (repo / "upstream.txt").read_text(encoding="utf-8") == "upstream feature update\n"
+    assert (repo / "feature.py").read_text(encoding="utf-8") == "upstream feature update\n"
