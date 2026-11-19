@@ -825,3 +825,32 @@ def test_invalid_registry_blocks_sync_plan(tmp_path):
 
     assert plan["status"] == "blocked"
     assert plan["customization_impact"]["registry_status"] == "blocked"
+
+
+def test_registry_impact_matches_both_sides_of_upstream_rename(tmp_path):
+    repo, base = _registry_repo(tmp_path)
+    git(repo, "mv", "feature.py", "renamed_feature.py")
+    git(repo, "commit", "-qm", "upstream rename feature")
+    target = git(repo, "rev-parse", "HEAD")
+    git(repo, "branch", "upstream/rename-test", target)
+    git(repo, "reset", "--hard", base)
+
+    plan = create_sync_plan(repo, base, target)
+
+    assert plan["status"] == "ready_for_review"
+    affected = plan["customization_impact"]["affected_customizations"]
+    assert affected[0]["changed_paths"] == ["feature.py"]
+    assert plan["required_customization_test_ids"] == ["tests/test_feature.py"]
+
+
+def test_unmapped_overlapping_change_is_blocked_when_registry_exists(tmp_path):
+    repo, base = _registry_repo(tmp_path)
+    target = commit_file(repo, "base.txt", "upstream base change\n", "upstream base edit")
+    git(repo, "branch", "upstream/unmapped-overlap", target)
+    git(repo, "reset", "--hard", base)
+    commit_file(repo, "base.txt", "custom base change\n", "local base edit")
+
+    plan = create_sync_plan(repo, base, target)
+
+    assert plan["status"] == "blocked"
+    assert plan["customization_impact"]["unmapped_overlaps"] == ["base.txt"]
