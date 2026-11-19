@@ -105,3 +105,86 @@ def test_snapshot_rejects_candidate_with_unstaged_changes(tmp_path):
     (candidate / "tampered.txt").write_text("tampered\n", encoding="utf-8")
     with pytest.raises(SyncPlanError, match="unstaged file changes"):
         create_sync_verification_snapshot(repo, report_path, push_url="https://github.com/acme/fork.git")
+
+
+def test_snapshot_creation_is_idempotent(tmp_path):
+    repo, candidate, report, report_path, _ = make_candidate(tmp_path)
+    first = create_sync_verification_snapshot(
+        repo, report_path, push_url="https://github.com/acme/fork.git"
+    )
+    second = create_sync_verification_snapshot(
+        repo, report_path, push_url="https://github.com/acme/fork.git"
+    )
+    assert second["snapshot_commit_sha"] == first["snapshot_commit_sha"]
+    assert second["snapshot_branch"] == first["snapshot_branch"]
+
+
+def test_authenticated_verification_binds_run_to_local_snapshot_and_candidate(monkeypatch, tmp_path):
+    import customizer.github_actions as github_actions
+    from urllib.parse import urlparse
+    from customizer.verification import create_sync_verification
+
+    repo, candidate, candidate_report, candidate_path, _ = make_candidate(tmp_path)
+    snapshot = create_sync_verification_snapshot(
+        repo, candidate_path, push_url="https://github.com/acme/fork.git"
+    )
+    snapshot_path = tmp_path / "snapshot-report.json"
+    snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
+    run_url = "https://github.com/acme/fork/actions/runs/12345"
+    workflow_path = ".github/workflows/ci.yml"
+    workflow_blob = "c" * 40
+    payloads = {
+        "/actions/runs/12345": {
+            "id": 12345,
+            "repository": {"full_name": "acme/fork"},
+            "status": "completed",
+            "conclusion": "success",
+            "event": "push",
+            "head_branch": snapshot["snapshot_branch"],
+            "head_sha": snapshot["snapshot_commit_sha"],
+            "workflow_id": 42,
+            "path": workflow_path,
+        },
+        f"/git/commits/{snapshot['snapshot_commit_sha']}": {
+            "tree": {"sha": snapshot["candidate_tree_sha"]},
+            "parents": [{"sha": snapshot["parent_sha"]}],
+        },
+        f"/contents/{workflow_path}?ref={snapshot['snapshot_commit_sha']}": {"sha": workflow_blob},
+        "/actions/runs/12345/jobs?per_page=100": {
+            "total_count": 1,
+            "jobs": [{"status": "completed", "conclusion": "success"}],
+        },
+    }
+
+    def fake_urlopen(request, timeout):
+        parsed = urlparse(request.full_url)
+        key = parsed.path.removeprefix("/repos/acme/fork")
+        if parsed.query:
+            key += "?" + parsed.query
+        return FakeResponse(payloads[key])
+
+    monkeypatch.setattr(github_actions, "urlopen", fake_urlopen)
+    evidence_path = tmp_path / "evidence.json"
+    evidence_path.write_text(json.dumps({
+        "schema_version": "1.0",
+        "verification_status": "passed",
+        "reviewer": "Test reviewer",
+        "verified_at": "2026-11-19T10:30:00+10:00",
+        "verification_source": run_url,
+        "candidate_tree_sha": snapshot["candidate_tree_sha"],
+        "rights_reviewed": False,
+        "test_results": [{"name": "unit tests", "passed": True, "evidence_ref": run_url}],
+    }), encoding="utf-8")
+
+    verified = create_sync_verification(
+        candidate_path, evidence_path,
+        github_run_url=run_url,
+        github_repository="acme/fork",
+        workflow_id=42,
+        workflow_path=workflow_path,
+        workflow_blob_sha=workflow_blob,
+        snapshot_report_path=snapshot_path,
+    )
+    assert verified["evidence_authenticated"] is True
+    assert verified["github_actions_evidence"]["head_sha"] == snapshot["snapshot_commit_sha"]
+    assert verified["candidate_tree_sha"] == snapshot["candidate_tree_sha"]

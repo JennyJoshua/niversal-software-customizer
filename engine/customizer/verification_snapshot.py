@@ -104,19 +104,19 @@ def create_sync_verification_snapshot(
     ref_name = f"refs/heads/{branch_name}"
     existing = _git(candidate, "show-ref", "--verify", "--quiet", ref_name, check=False)
     if existing.returncode == 0:
-        raise SyncPlanError("A verification snapshot branch already exists for this candidate tree.")
-    if existing.returncode != 1:
+        snapshot_sha = _git(candidate, "rev-parse", "--verify", ref_name).stdout.strip().lower()
+    elif existing.returncode == 1:
+        snapshot_sha = _git(
+            candidate,
+            "-c", "user.name=USC Verification Snapshot",
+            "-c", "user.email=usc-verification@invalid",
+            "-c", "commit.gpgSign=false",
+            "commit-tree", tree_sha, "-p", original_head,
+            "-m", f"USC verification snapshot for upstream {target}",
+        ).stdout.strip().lower()
+        _git(candidate, "update-ref", ref_name, snapshot_sha)
+    else:
         raise SyncPlanError("Git could not safely check the verification snapshot branch.")
-
-    snapshot_sha = _git(
-        candidate,
-        "-c", "user.name=USC Verification Snapshot",
-        "-c", "user.email=usc-verification@invalid",
-        "-c", "commit.gpgSign=false",
-        "commit-tree", tree_sha, "-p", original_head,
-        "-m", f"USC verification snapshot for upstream {target}",
-    ).stdout.strip().lower()
-    _git(candidate, "update-ref", ref_name, snapshot_sha)
     snapshot_tree = _git(candidate, "rev-parse", "--verify", f"{snapshot_sha}^{{tree}}").stdout.strip().lower()
     parents = _git(candidate, "rev-list", "--parents", "-n", "1", snapshot_sha).stdout.strip().split()
     if snapshot_tree != tree_sha or parents != [snapshot_sha, original_head]:
