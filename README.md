@@ -47,6 +47,7 @@ The rights report inventories root and nested evidence, extracts supported depen
 - Use free/open-source tools and GitHub Actions where practical.
 - Never execute untrusted project scripts during static inspection or sync planning.
 - Never silently overwrite custom work or automatically resolve merge conflicts.
+- Apply the [Custom Feature Protection Policy](docs/custom-feature-protection-policy.md) to every adapter and upstream synchronization workflow.
 
 ## Repository guide
 
@@ -54,7 +55,7 @@ The rights report inventories root and nested evidence, extracts supported depen
 - ARCHITECTURE.md — proposed system design
 - DECISIONS.md — accepted project decisions
 - ROADMAP.md — phased delivery
-- docs/ — licensing, security, workflow, upstream sync, and adapter guidance
+- docs/ — licensing, security, workflow, upstream sync, custom feature protection, and adapter guidance
 - configuration/ — example project and branding configuration
 - engine/ — core orchestration package
 - tests/ — automated tests

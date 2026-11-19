@@ -48,6 +48,14 @@ Build a reusable, configuration-driven framework that helps produce separately b
 - Verification reports actual command outcomes and logs.
 - Provenance records upstream URL/revisions, review status, config digest, changed files, tests, tool versions, and artifact metadata.
 
+## Custom feature protection requirements
+
+- Preserve product identity, custom functionality, product configuration, data/integration contracts, project-owned engineering assets, and synchronization metadata as defined in docs/custom-feature-protection-policy.md.
+- Upstream synchronization must block overlapping conflicts, upstream deletion of locally modified files, ambiguous rename/delete cases, and unsafe changes to protected metadata.
+- Every adapter must declare allowlisted paths, protected paths, dry-run changes, preservation tests, and targeted regression tests.
+- A clean Git merge is not sufficient evidence of semantic compatibility; affected custom behaviours must be tested before acceptance.
+- Upstream licence, notice, attribution, and trademark obligations must remain intact and receive renewed human review when changed.
+
 ## Non-functional requirements
 
 - Reproducible, transparent, secure, portable, low-cost, and maintainable.
