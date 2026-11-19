@@ -10,7 +10,7 @@ This is not a universal source-code converter, reverse-engineering tool, or meth
 
 ## Current status
 
-**Foundation + static inspection + rights-evidence reporting + read-only upstream planning + isolated candidate integration + candidate evidence validation.** The tool can inspect source repositories, collect project/dependency rights evidence, plan a three-way upstream update, create an uncommitted candidate merge in a separate clone, and validate reviewer-supplied test evidence against the candidate's current Git tree. Explicit acceptance, baseline advancement, and provenance are available behind separate approval and evidence-review gates. Trusted CI authentication, automated recovery, branding transformations, and production adapters remain outstanding.
+**Foundation + static inspection + rights-evidence reporting + upstream sync planning, isolated candidate integration, explicit acceptance, provenance, recovery, and GitHub Actions evidence authentication.** The tool can create a verification-only snapshot commit/ref whose tree exactly matches an uncommitted candidate, without changing the product branch or baseline. Public GitHub Actions runs can be authenticated against the exact snapshot commit/tree, pinned workflow identity, and successful jobs. Snapshot publication is deliberately a separate manual push; a real published-run-to-acceptance integration test remains outstanding. Branding transformations and production adapters are not yet implemented.
 
 ## First capabilities
 
@@ -23,6 +23,7 @@ usc inspect --repo-url https://github.com/OWNER/REPOSITORY --revision v1.2.3
 usc licences --path ./source-project --output rights-review.json
 usc sync-plan --path ./customized-repository --base-sha <last-imported-upstream-sha> --target-sha <new-upstream-sha>
 usc sync-candidate --path ./customized-repository --base-sha <last-imported-upstream-sha> --target-sha <new-upstream-sha> --workspace ../upstream-candidate --approve --output ../candidate-report.json
+usc sync-snapshot --path ./customized-repository --candidate-report ../candidate-report.json --push-url https://github.com/OWNER/FORK.git --output ../snapshot-report.json
 usc sync-verify --candidate-report ../candidate-report.json --evidence ../verification-evidence.json --output ../verification-report.json
 usc sync-accept --path ./customized-repository --candidate-report ../candidate-report.json --verification-report ../verification-report.json --upstream-url https://github.com/OWNER/REPOSITORY --evidence-reviewed --approve
 ```

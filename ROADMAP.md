@@ -27,7 +27,7 @@
 - [x] Require timezone-aware verification timestamps, reviewer identity, passing test entries, and evidence references.
 - [x] Authenticate CI run metadata and pin the workflow file to a trusted blob SHA.
 - [x] Create an exact-tree verification snapshot locally without changing the original product branch or candidate merge state.
-- [ ] Automate snapshot publication and test the full run-to-acceptance lifecycle.
+- [ ] Validate a real published snapshot run through verification and acceptance end-to-end; document safe cleanup of temporary verification refs.
 - [x] Add explicit candidate acceptance with original-HEAD/branch/clean-tree rechecks and fast-forward-only update.
 - [x] Advance the stored upstream baseline only with the accepted branch update.
 - [x] Record sync provenance, reviewer/test evidence, rights acknowledgement, and resulting merge commit.
