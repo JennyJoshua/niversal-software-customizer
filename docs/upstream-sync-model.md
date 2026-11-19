@@ -155,18 +155,17 @@ Recovery checks that the candidate worktree is clean, the committed provenance/b
 If interruption happened before provenance and baseline were committed, recovery deliberately refuses; discard the candidate and create a fresh one. The original customized branch remains the authoritative copy.
 
 
-## Selective synchronization and structured-file merge — future specification
+## Registry-aware selective synchronization — implemented
 
-The current implementation classifies Git paths and uses Git's three-way merge. It does not yet understand feature ownership inside a file or perform format-aware merges. These are separate future capabilities and must not be described as implemented.
+The v1 registry at `.usc/customizations.json` participates in read-only sync planning and candidate verification/acceptance. It adds feature ownership context to Git path-level planning; it does not replace Git history or the three-way merge base.
 
-### Selective synchronization
+Required test IDs are carried into the isolated candidate report. Verification requires passing evidence with a non-empty evidence reference for every required ID and binds the verification report to the exact candidate tree SHA. Acceptance recomputes the current sync plan and rejects missing, stale, failed, or mismatched evidence. USC validates supplied evidence but does not execute project-specific tests or guarantee semantic preservation.
 
-Use the machine-readable customization registry defined in `docs/custom-feature-protection-policy.md` to add context to path-level planning. The registry must not replace Git history or the three-way merge base. It should identify:
-- Which custom features/configurations/contracts are touched by each changed path.
-- Whether the changed area requires preservation checks, targeted regression tests, or human resolution.
-- Cases where upstream and custom code share a file and therefore cannot safely be handled by whole-file exclusion or replacement.
+Whole-file ignore/exclude rules remain prohibited as the primary protection mechanism. Unknown overlaps fail closed.
 
-Do not introduce blanket ignore/exclude rules as the primary protection mechanism. Excluding an entire mixed-ownership file can prevent upstream security fixes; replacing it wholesale can erase custom behaviour. If the registry cannot confidently map a change, mark it unknown and block acceptance pending review.
+## Structured-file merge — future specification
+
+The current implementation still uses Git's ordinary three-way merge and does not perform format-aware merges. A later adapter may support format-aware three-way merges for structured configuration files. Implement JSON first, then a deliberately limited YAML subset only after parser and round-trip behaviour is proven. Each merge must:
 
 ### Structured merge
 
