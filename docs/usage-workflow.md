@@ -41,10 +41,9 @@ Supported dependency metadata currently includes npm `package.json`, Composer `c
 
 ## Create a read-only upstream sync plan
 
-First fetch the relevant upstream history into the local Git repository using your normal Git client. Do not fetch untrusted submodules or run project scripts as part of this step. Identify:
-- The exact upstream commit SHA last imported into the customized product (base).
-- The exact newer upstream commit SHA to evaluate (target).
-- The current customized commit (the checked-out HEAD).
+First fetch the relevant upstream history into the local Git repository using your normal Git client. Do not fetch untrusted submodules or run project scripts as part of this step. Identify the exact newer upstream commit SHA to evaluate (target) and the current customized commit (the checked-out HEAD).
+
+For the first sync, or when deliberately overriding the recorded baseline, supply `--base-sha`. After a sync has been accepted, USC records `.usc/upstream-baseline.json` and a matching provenance record. Subsequent runs can omit `--base-sha` and supply `--upstream-url`; USC validates the repository identity, committed baseline/provenance contents, and history ancestry before using the stored SHA.
 
 Then run:
 
@@ -55,7 +54,7 @@ usc sync-plan --path ./customized-repository \
   --output ../upstream-sync-plan.json
 ```
 
-The output path must be outside the repository. The planner requires:
+To override the stored baseline explicitly, add `--base-sha <full-sha>`; explicit SHA overrides do not read the baseline file. The output path must be outside the repository. The planner requires:
 - A non-bare Git working repository with complete (not shallow) history.
 - Full 40- or 64-character commit SHAs.
 - The base commit to be the exact merge base of the customized HEAD and upstream target.

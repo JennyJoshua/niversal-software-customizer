@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .inspector import InspectionError, inspect_github_repository, inspect_repository
 from .licensing import LicenceScanError, scan_licence_evidence
-from .sync import SyncPlanError, create_sync_candidate, create_sync_plan
+from .sync import SyncPlanError, create_sync_candidate, create_sync_plan, resolve_sync_base
 from .verification import create_sync_verification
 from .verification_snapshot import create_sync_verification_snapshot
 from .acceptance import accept_sync_candidate, recover_sync_acceptance
@@ -38,7 +38,8 @@ def build_parser() -> argparse.ArgumentParser:
         "sync-plan", help="Create a read-only three-way upstream synchronization plan."
     )
     sync_parser.add_argument("--path", required=True, help="Customized Git working repository.")
-    sync_parser.add_argument("--base-sha", required=True, help="Full SHA of the last imported upstream baseline.")
+    sync_parser.add_argument("--base-sha", help="Explicit full SHA override; otherwise load the validated stored baseline.")
+    sync_parser.add_argument("--upstream-url", help="Expected HTTPS GitHub upstream URL when loading the stored baseline.")
     sync_parser.add_argument("--target-sha", required=True, help="Full SHA of the selected newer upstream commit.")
     sync_parser.add_argument("--output", help="Write JSON plan outside the repository.")
 
@@ -46,7 +47,8 @@ def build_parser() -> argparse.ArgumentParser:
         "sync-candidate", help="Create an isolated, uncommitted upstream integration candidate."
     )
     candidate_parser.add_argument("--path", required=True, help="Customized Git working repository.")
-    candidate_parser.add_argument("--base-sha", required=True, help="Full SHA of the last imported upstream baseline.")
+    candidate_parser.add_argument("--base-sha", help="Explicit full SHA override; otherwise load the validated stored baseline.")
+    candidate_parser.add_argument("--upstream-url", help="Expected HTTPS GitHub upstream URL when loading the stored baseline.")
     candidate_parser.add_argument("--target-sha", required=True, help="Full SHA of the selected newer upstream commit.")
     candidate_parser.add_argument("--workspace", required=True, help="New candidate directory outside the source repository.")
     candidate_parser.add_argument("--approve", action="store_true", help="Confirm creation of the isolated candidate.")
@@ -132,7 +134,8 @@ def main(argv: list[str] | None = None) -> int:
             _write_report(report, args.output, source_root)
         elif args.command == "sync-plan":
             source_root = Path(args.path).expanduser().resolve()
-            report = create_sync_plan(source_root, args.base_sha, args.target_sha)
+            base_sha = resolve_sync_base(source_root, base_sha=args.base_sha, upstream_url=args.upstream_url)
+            report = create_sync_plan(source_root, base_sha, args.target_sha)
             _write_report(report, args.output, source_root)
         elif args.command == "sync-candidate":
             source_root = Path(args.path).expanduser().resolve()
@@ -144,7 +147,7 @@ def main(argv: list[str] | None = None) -> int:
                 if output_path == candidate_path or candidate_path in output_path.parents:
                     raise ValueError("Candidate report output must be outside the candidate workspace.")
             report = create_sync_candidate(
-                source_root, args.base_sha, args.target_sha, args.workspace,
+                source_root, resolve_sync_base(source_root, base_sha=args.base_sha, upstream_url=args.upstream_url), args.target_sha, args.workspace,
                 approved=args.approve, rights_reviewed=args.rights_reviewed,
             )
             _write_report(report, args.output, source_root)
