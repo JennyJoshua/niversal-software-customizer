@@ -10,7 +10,8 @@
 - [x] Read-only, baseline-aware upstream sync planner implemented and merged (PR #8).
 - [x] Isolated, uncommitted candidate integration implemented and merged (PR #9).
 - [x] Authenticate public GitHub Actions run metadata, jobs, workflow identity, and exact candidate tree against pinned trust anchors.
-- [ ] Publish an isolated verification snapshot for the uncommitted candidate tree and connect the full snapshot-to-acceptance lifecycle.
+- [x] Create an isolated one-parent verification snapshot commit/ref with an exact candidate tree, without changing product/candidate HEAD or baseline.
+- [ ] Verify the published snapshot end-to-end against a real GitHub Actions run and connect it to acceptance.
 
 ## Phase 3 — Safe upstream synchronization
 
@@ -25,7 +26,8 @@
 - [x] Validate external test evidence against the candidate branch, merge state, and exact Git tree SHA.
 - [x] Require timezone-aware verification timestamps, reviewer identity, passing test entries, and evidence references.
 - [x] Authenticate CI run metadata and pin the workflow file to a trusted blob SHA.
-- [ ] Automate creation/publication of the exact-tree verification snapshot; keep the original product branch and baseline unchanged.
+- [x] Create an exact-tree verification snapshot locally without changing the original product branch or candidate merge state.
+- [ ] Automate snapshot publication and test the full run-to-acceptance lifecycle.
 - [x] Add explicit candidate acceptance with original-HEAD/branch/clean-tree rechecks and fast-forward-only update.
 - [x] Advance the stored upstream baseline only with the accepted branch update.
 - [x] Record sync provenance, reviewer/test evidence, rights acknowledgement, and resulting merge commit.

@@ -12,6 +12,8 @@ from customizer.sync import SyncPlanError
 RUN_URL = "https://github.com/acme/fork/actions/runs/12345"
 REPO = "acme/fork"
 HEAD = "a" * 40
+PARENT = "f" * 40
+BRANCH = "usc-verify/candidate-123"
 TREE = "b" * 40
 WORKFLOW_BLOB = "c" * 40
 WORKFLOW_PATH = ".github/workflows/ci.yml"
@@ -38,14 +40,14 @@ def make_payloads():
         "status": "completed",
         "conclusion": "success",
         "event": "push",
-        "head_branch": "usc-verify/candidate-123",
+        "head_branch": BRANCH,
         "head_sha": HEAD,
         "workflow_id": 42,
         "path": WORKFLOW_PATH,
     }
     return {
         "/actions/runs/12345": run,
-        f"/git/commits/{HEAD}": {"tree": {"sha": TREE}},
+        f"/git/commits/{HEAD}": {"tree": {"sha": TREE}, "parents": [{"sha": PARENT}]},
         f"/contents/{WORKFLOW_PATH}?ref={HEAD}": {"sha": WORKFLOW_BLOB},
         "/actions/runs/12345/jobs?per_page=100": {
             "total_count": 1,
@@ -73,6 +75,9 @@ def verify(monkeypatch, payloads):
         expected_workflow_id=42,
         expected_workflow_path=WORKFLOW_PATH,
         expected_workflow_blob_sha=WORKFLOW_BLOB,
+        expected_head_sha=HEAD,
+        expected_parent_sha=PARENT,
+        expected_branch=BRANCH,
     )
 
 
@@ -82,6 +87,7 @@ def test_authenticates_successful_run_for_exact_candidate_tree_and_pinned_workfl
     assert result["authenticated"] is True
     assert result["repository"] == REPO
     assert result["head_sha"] == HEAD
+    assert result["parent_sha"] == PARENT
     assert result["candidate_tree_sha"] == TREE
     assert result["workflow_blob_sha"] == WORKFLOW_BLOB
     assert result["job_count"] == 1
@@ -94,7 +100,7 @@ def test_authenticates_successful_run_for_exact_candidate_tree_and_pinned_workfl
         ("status", "in_progress", "completed"),
         ("conclusion", "failure", "conclusion=success"),
         ("event", "pull_request", "push-triggered"),
-        ("head_branch", "main", "usc-verify/"),
+        ("head_branch", "main", "published verification snapshot"),
         ("workflow_id", 99, "pinned workflow identity"),
         ("path", ".github/workflows/other.yml", "pinned workflow identity"),
     ],
@@ -150,4 +156,28 @@ def test_rejects_noncanonical_or_untrusted_run_urls(url):
             expected_workflow_id=42,
             expected_workflow_path=WORKFLOW_PATH,
             expected_workflow_blob_sha=WORKFLOW_BLOB,
+            expected_head_sha=HEAD,
+            expected_parent_sha=PARENT,
+            expected_branch=BRANCH,
         )
+
+
+def test_rejects_wrong_snapshot_commit_sha(monkeypatch):
+    payloads = make_payloads()
+    payloads["/actions/runs/12345"]["head_sha"] = "d" * 40
+    with pytest.raises(SyncPlanError, match="snapshot commit"):
+        verify(monkeypatch, payloads)
+
+
+def test_rejects_wrong_snapshot_parent(monkeypatch):
+    payloads = make_payloads()
+    payloads[f"/git/commits/{HEAD}"]["parents"] = [{"sha": "e" * 40}]
+    with pytest.raises(SyncPlanError, match="sole parent"):
+        verify(monkeypatch, payloads)
+
+
+def test_rejects_wrong_snapshot_branch(monkeypatch):
+    payloads = make_payloads()
+    payloads["/actions/runs/12345"]["head_branch"] = "usc-verify/other"
+    with pytest.raises(SyncPlanError, match="published verification snapshot"):
+        verify(monkeypatch, payloads)

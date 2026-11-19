@@ -42,6 +42,9 @@ def authenticate_github_actions_run(
     expected_workflow_id: int,
     expected_workflow_path: str,
     expected_workflow_blob_sha: str,
+    expected_head_sha: str,
+    expected_parent_sha: str,
+    expected_branch: str,
 ) -> dict[str, Any]:
     """Verify a public GitHub Actions run and pin it to a trusted workflow and exact Git tree.
 
@@ -54,6 +57,12 @@ def authenticate_github_actions_run(
         raise SyncPlanError("Expected candidate tree SHA must be a full Git object SHA.")
     if not isinstance(expected_workflow_blob_sha, str) or not _SHA_RE.fullmatch(expected_workflow_blob_sha):
         raise SyncPlanError("Trusted workflow blob SHA must be a full Git object SHA.")
+    if not isinstance(expected_head_sha, str) or not _SHA_RE.fullmatch(expected_head_sha):
+        raise SyncPlanError("Expected snapshot commit SHA must be a full Git object SHA.")
+    if not isinstance(expected_parent_sha, str) or not _SHA_RE.fullmatch(expected_parent_sha):
+        raise SyncPlanError("Expected customized parent SHA must be a full Git object SHA.")
+    if not isinstance(expected_branch, str) or not expected_branch.startswith("usc-verify/"):
+        raise SyncPlanError("Expected snapshot branch must begin with usc-verify/.")
     if isinstance(expected_workflow_id, bool) or not isinstance(expected_workflow_id, int) or expected_workflow_id <= 0:
         raise SyncPlanError("Trusted GitHub Actions workflow ID must be a positive integer.")
     if (
@@ -95,18 +104,23 @@ def authenticate_github_actions_run(
     if run.get("event") != "push":
         raise SyncPlanError("Trusted candidate verification requires a push-triggered GitHub Actions run.")
     branch = run.get("head_branch")
-    if not isinstance(branch, str) or not branch.startswith("usc-verify/"):
-        raise SyncPlanError("GitHub Actions run must use an isolated usc-verify/ branch.")
+    if branch != expected_branch or not branch.startswith("usc-verify/"):
+        raise SyncPlanError("GitHub Actions run branch does not match the published verification snapshot.")
     if run.get("workflow_id") != expected_workflow_id or run.get("path") != expected_workflow_path:
         raise SyncPlanError("GitHub Actions run does not match the pinned workflow identity.")
 
     head_sha = run.get("head_sha")
     if not isinstance(head_sha, str) or not _SHA_RE.fullmatch(head_sha):
         raise SyncPlanError("GitHub Actions run does not contain a valid head commit SHA.")
+    if head_sha.lower() != expected_head_sha.lower():
+        raise SyncPlanError("GitHub Actions run head SHA does not match the published snapshot commit.")
     commit = _api_json(f"{api_root}/git/commits/{head_sha}")
     tree = commit.get("tree")
     if not isinstance(tree, dict) or str(tree.get("sha", "")).lower() != expected_tree_sha.lower():
         raise SyncPlanError("GitHub Actions head commit tree does not match the exact candidate tree.")
+    parents = commit.get("parents")
+    if not isinstance(parents, list) or len(parents) != 1 or str(parents[0].get("sha", "")).lower() != expected_parent_sha.lower():
+        raise SyncPlanError("Verification snapshot commit does not have the expected customized commit as its sole parent.")
 
     content_path = quote(expected_workflow_path, safe="/")
     content_url = f"{api_root}/contents/{content_path}?{urlencode({'ref': head_sha})}"
@@ -132,6 +146,7 @@ def authenticate_github_actions_run(
         "event": "push",
         "branch": branch,
         "head_sha": head_sha.lower(),
+        "parent_sha": expected_parent_sha.lower(),
         "candidate_tree_sha": expected_tree_sha.lower(),
         "workflow_id": expected_workflow_id,
         "workflow_path": expected_workflow_path,

@@ -10,6 +10,7 @@ from .inspector import InspectionError, inspect_github_repository, inspect_repos
 from .licensing import LicenceScanError, scan_licence_evidence
 from .sync import SyncPlanError, create_sync_candidate, create_sync_plan
 from .verification import create_sync_verification
+from .verification_snapshot import create_sync_verification_snapshot
 from .acceptance import accept_sync_candidate, recover_sync_acceptance
 
 
@@ -55,11 +56,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     candidate_parser.add_argument("--output", help="Write JSON candidate report outside both repositories.")
 
+    snapshot_parser = subparsers.add_parser("sync-snapshot", help="Create an isolated verification-only commit for a candidate tree.")
+    snapshot_parser.add_argument("--path", required=True, help="Original customized Git working repository.")
+    snapshot_parser.add_argument("--candidate-report", required=True, help="JSON report emitted by sync-candidate.")
+    snapshot_parser.add_argument("--push-url", required=True, help="HTTPS GitHub URL of the customized fork; the command will not push.")
+    snapshot_parser.add_argument("--output", help="Write snapshot report outside both repositories.")
+
     verify_parser = subparsers.add_parser(
         "sync-verify", help="Validate external test evidence against an unchanged candidate tree."
     )
     verify_parser.add_argument("--candidate-report", required=True, help="JSON report emitted by sync-candidate.")
     verify_parser.add_argument("--evidence", required=True, help="Reviewer-supplied JSON test evidence.")
+    verify_parser.add_argument("--snapshot-report", help="JSON report emitted by sync-snapshot; required for authenticated mode.")
     verify_parser.add_argument("--github-run-url", help="Canonical GitHub Actions run URL for a published candidate snapshot.")
     verify_parser.add_argument("--github-repo", help="Trusted GitHub OWNER/REPOSITORY for the Actions run.")
     verify_parser.add_argument("--workflow-id", type=int, help="Trusted numeric GitHub Actions workflow ID.")
@@ -140,12 +148,27 @@ def main(argv: list[str] | None = None) -> int:
                 approved=args.approve, rights_reviewed=args.rights_reviewed,
             )
             _write_report(report, args.output, source_root)
+        elif args.command == "sync-snapshot":
+            source_root = Path(args.path).expanduser().resolve()
+            candidate_data = json.loads(Path(args.candidate_report).expanduser().read_text(encoding="utf-8"))
+            candidate_path = Path(candidate_data["candidate_path"]).expanduser().resolve()
+            if args.output:
+                output_path = Path(args.output).expanduser().resolve()
+                if output_path == source_root or source_root in output_path.parents:
+                    raise ValueError("Snapshot report output must be outside the original repository.")
+                if output_path == candidate_path or candidate_path in output_path.parents:
+                    raise ValueError("Snapshot report output must be outside the candidate workspace.")
+            report = create_sync_verification_snapshot(
+                source_root, args.candidate_report, push_url=args.push_url,
+            )
+            _write_report(report, args.output, source_root)
         elif args.command == "sync-verify":
             report = create_sync_verification(
                 args.candidate_report, args.evidence,
                 github_run_url=args.github_run_url, github_repository=args.github_repo,
                 workflow_id=args.workflow_id, workflow_path=args.workflow_path,
                 workflow_blob_sha=args.workflow_blob_sha,
+                snapshot_report_path=args.snapshot_report,
             )
             candidate_data = json.loads(Path(args.candidate_report).expanduser().read_text(encoding="utf-8"))
             candidate_path = Path(candidate_data["candidate_path"]).expanduser().resolve()
