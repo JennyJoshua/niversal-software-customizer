@@ -635,3 +635,103 @@ def test_upstream_and_custom_renames_of_same_file_are_blocked(tmp_path):
     assert git(repo, "rev-parse", "HEAD") == customized
     assert (repo / "custom-renamed.txt").read_text(encoding="utf-8") == "base\n"
     assert not (repo / "upstream-renamed.txt").exists()
+
+
+def test_acceptance_rejects_removed_rights_review_acknowledgement(tmp_path):
+    import json
+    from customizer.acceptance import accept_sync_candidate
+    from customizer.sync import create_sync_candidate
+    from customizer.verification import create_sync_verification
+
+    repo, _ = init_repo(tmp_path)
+    commit_file(repo, "LICENSE", "Original licence terms\n", "base licence")
+    base = git(repo, "rev-parse", "HEAD")
+    target = commit_file(repo, "LICENSE", "Updated upstream licence terms\n", "upstream licence update")
+    git(repo, "branch", "upstream/test", target)
+    git(repo, "reset", "--hard", base)
+    commit_file(repo, "custom.txt", "custom feature\n", "custom feature")
+
+    workspace = tmp_path / "candidate"
+    candidate = create_sync_candidate(
+        repo, base, target, workspace, approved=True, rights_reviewed=True,
+    )
+    candidate_path = tmp_path / "candidate-report.json"
+    candidate_path.write_text(json.dumps(candidate), encoding="utf-8")
+    evidence_path = tmp_path / "evidence.json"
+    evidence_path.write_text(json.dumps({
+        "schema_version": "1.0",
+        "verification_status": "passed",
+        "reviewer": "Reviewer",
+        "verified_at": "2026-11-20T08:00:00+10:00",
+        "verification_source": "CI run 456",
+        "candidate_tree_sha": git(workspace, "write-tree"),
+        "rights_reviewed": True,
+        "test_results": [{
+            "name": "candidate regression tests",
+            "passed": True,
+            "evidence_ref": "CI run 456",
+        }],
+    }), encoding="utf-8")
+    verification = create_sync_verification(candidate_path, evidence_path)
+    verification_path = tmp_path / "verification-report.json"
+    verification_path.write_text(json.dumps(verification), encoding="utf-8")
+
+    candidate["rights_reviewed"] = False
+    candidate_path.write_text(json.dumps(candidate), encoding="utf-8")
+    original_head = git(repo, "rev-parse", "HEAD")
+
+    with pytest.raises(SyncPlanError, match="rights acknowledgement"):
+        accept_sync_candidate(
+            repo, candidate_path, verification_path,
+            upstream_url="https://github.com/upstream/sample-project",
+            approved=True, evidence_reviewed=True,
+        )
+
+    assert git(repo, "rev-parse", "HEAD") == original_head
+    assert (repo / "LICENSE").read_text(encoding="utf-8") == "Original licence terms\n"
+    assert not (repo / ".usc" / "upstream-baseline.json").exists()
+
+
+def test_upstream_deletion_of_unmodified_file_is_integrated_without_losing_custom_file(tmp_path):
+    from customizer.sync import create_sync_candidate
+
+    repo, _ = init_repo(tmp_path)
+    commit_file(repo, "retired.txt", "upstream-owned file\n", "add upstream file")
+    base = git(repo, "rev-parse", "HEAD")
+    git(repo, "rm", "retired.txt")
+    git(repo, "commit", "-qm", "upstream removes obsolete file")
+    target = git(repo, "rev-parse", "HEAD")
+    git(repo, "branch", "upstream/test", target)
+    git(repo, "reset", "--hard", base)
+    commit_file(repo, "custom.txt", "custom feature\n", "add custom feature")
+    original_head = git(repo, "rev-parse", "HEAD")
+
+    plan = create_sync_plan(repo, base, target)
+    candidate = tmp_path / "candidate"
+    result = create_sync_candidate(repo, base, target, candidate, approved=True)
+
+    assert plan["status"] == "ready_for_review"
+    assert result["status"] == "candidate_ready_for_review"
+    assert not (candidate / "retired.txt").exists()
+    assert (candidate / "custom.txt").read_text(encoding="utf-8") == "custom feature\n"
+    assert (repo / "retired.txt").read_text(encoding="utf-8") == "upstream-owned file\n"
+    assert git(repo, "rev-parse", "HEAD") == original_head
+
+
+def test_upstream_deletion_conflicts_with_custom_rename(tmp_path):
+    repo, base = init_repo(tmp_path)
+    git(repo, "rm", "base.txt")
+    git(repo, "commit", "-qm", "upstream deletes base file")
+    target = git(repo, "rev-parse", "HEAD")
+    git(repo, "branch", "upstream/test", target)
+    git(repo, "reset", "--hard", base)
+    git(repo, "mv", "base.txt", "custom-renamed.txt")
+    git(repo, "commit", "-qm", "custom renames base file")
+    customized = git(repo, "rev-parse", "HEAD")
+
+    plan = create_sync_plan(repo, base, target)
+
+    assert plan["status"] == "blocked"
+    assert plan["merge_conflicts"]
+    assert git(repo, "rev-parse", "HEAD") == customized
+    assert (repo / "custom-renamed.txt").read_text(encoding="utf-8") == "base\n"
