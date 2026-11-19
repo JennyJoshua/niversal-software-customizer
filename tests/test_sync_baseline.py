@@ -80,14 +80,18 @@ def test_rejects_different_upstream_repository(tmp_path):
 
 def test_rejects_modified_working_baseline_or_provenance(tmp_path):
     repo, _, baseline_path, _ = make_repo_with_baseline(tmp_path)
-    baseline_path.write_text("{}\n", encoding="utf-8")
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    baseline["accepted_at"] = "tampered"
+    baseline_path.write_text(json.dumps(baseline, sort_keys=True) + "\n", encoding="utf-8")
     with pytest.raises(SyncPlanError, match="differs from the committed"):
         resolve_sync_base(repo, upstream_url=UPSTREAM_URL)
 
 
 def test_rejects_missing_or_tampered_provenance(tmp_path):
     repo, _, _, provenance_path = make_repo_with_baseline(tmp_path)
-    provenance_path.write_text('{"tampered": true}\n', encoding="utf-8")
+    provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+    provenance["reviewer"] = "tampered"
+    provenance_path.write_text(json.dumps(provenance, sort_keys=True) + "\n", encoding="utf-8")
     with pytest.raises(SyncPlanError, match="differs from the committed"):
         resolve_sync_base(repo, upstream_url=UPSTREAM_URL)
 
