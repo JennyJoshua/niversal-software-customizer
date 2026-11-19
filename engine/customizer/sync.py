@@ -309,6 +309,7 @@ def create_sync_candidate(
             "status": "blocked" if has_conflicts else "candidate_ready_for_review",
             "candidate_path": str(candidate),
             "candidate_branch": branch_name,
+            "original_branch": _git(repo, "symbolic-ref", "--quiet", "--short", "HEAD").stdout.strip(),
             "base_sha": plan["base_sha"],
             "upstream_target_sha": target,
             "customized_sha": customized,

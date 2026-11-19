@@ -147,3 +147,24 @@ The verifier checks the candidate branch, original customized HEAD, upstream MER
 ## Candidate acceptance (not yet implemented)
 
 Even a `verification_passed` report does not change the original customized repository. Explicit acceptance, race-safe original-HEAD checks, baseline advancement, and complete provenance are still future work. Until then, keep the original customized ref authoritative.
+
+
+## Explicitly accept a verified candidate
+
+Acceptance is a separate, mutating step. Before running it, inspect the candidate diff, verify the CI/test evidence yourself, and confirm that the candidate report and verification report belong to the same candidate. The original customized repository must still be on the exact branch and commit recorded when the candidate was created, with a clean working tree.
+
+Run:
+
+```bash
+usc sync-accept --path ./customized-repository \
+  --candidate-report ../candidate-report.json \
+  --verification-report ../verification-report.json \
+  --upstream-url https://github.com/OWNER/UPSTREAM-REPOSITORY \
+  --evidence-reviewed \
+  --approve \
+  --output ../acceptance-report.json
+```
+
+Both flags are deliberate gates: `--evidence-reviewed` acknowledges that supplied test evidence is not independently authenticated; `--approve` authorizes updating the original customized branch. The command rechecks the source HEAD/branch/clean state, rechecks the candidate merge and verified tree SHA, creates the merge and provenance commits in the candidate clone, then fast-forwards the original branch only if its recorded starting point is still unchanged.
+
+On success, the original branch contains the upstream merge plus `.usc/upstream-baseline.json` and a detailed `.usc/provenance/` record. The baseline advances to the selected upstream target only as part of this successful fast-forward. If any pre-update check fails, the original branch remains unchanged. Candidate acceptance never runs project tests or scripts; tests must already have been run in an isolated environment.

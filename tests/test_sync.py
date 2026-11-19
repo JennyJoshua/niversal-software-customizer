@@ -313,3 +313,105 @@ def test_candidate_verification_requires_timezone_aware_timestamp(tmp_path):
     }), encoding="utf-8")
     with pytest.raises(SyncPlanError, match="explicit timezone offset"):
         create_sync_verification(report_path, evidence_path)
+
+
+def _make_verified_candidate(tmp_path):
+    import json
+    from customizer.sync import create_sync_candidate
+
+    repo, base = init_repo(tmp_path)
+    target = commit_file(repo, "upstream.txt", "upstream update\n", "upstream change")
+    git(repo, "branch", "upstream/test", target)
+    git(repo, "reset", "--hard", base)
+    commit_file(repo, "custom.txt", "custom work\n", "custom change")
+    workspace = tmp_path / "candidate"
+    candidate_report = create_sync_candidate(repo, base, target, workspace, approved=True)
+    candidate_report_path = tmp_path / "candidate-report.json"
+    candidate_report_path.write_text(json.dumps(candidate_report), encoding="utf-8")
+    verification_report = {
+        "schema_version": "1.0",
+        "operation": "upstream_sync_verification",
+        "status": "verification_passed",
+        "base_sha": base,
+        "upstream_target_sha": target,
+        "customized_sha": candidate_report["customized_sha"],
+        "candidate_branch": candidate_report["candidate_branch"],
+        "candidate_tree_sha": git(workspace, "write-tree"),
+        "reviewer": "Reviewer",
+        "verified_at": "2026-11-19T10:30:00+10:00",
+        "verification_source": "CI run 123",
+        "test_results": [{"name": "regression tests", "passed": True, "evidence_ref": "CI run 123"}],
+        "rights_reviewed": False,
+        "evidence_authenticated": False,
+    }
+    verification_path = tmp_path / "verification-report.json"
+    verification_path.write_text(json.dumps(verification_report), encoding="utf-8")
+    return repo, base, target, workspace, candidate_report, candidate_report_path, verification_path
+
+
+def test_acceptance_fast_forwards_original_and_records_baseline_and_provenance(tmp_path):
+    import json
+    from customizer.acceptance import accept_sync_candidate
+
+    repo, base, target, workspace, candidate, candidate_path, verification_path = _make_verified_candidate(tmp_path)
+    original_branch = git(repo, "branch", "--show-current")
+    original_head = git(repo, "rev-parse", "HEAD")
+
+    result = accept_sync_candidate(
+        repo, candidate_path, verification_path,
+        upstream_url="https://github.com/upstream/sample-project",
+        approved=True, evidence_reviewed=True,
+    )
+
+    assert result["status"] == "accepted"
+    assert result["original_branch"] == original_branch
+    assert result["previous_customized_sha"] == original_head
+    assert git(repo, "rev-parse", "HEAD") == result["provenance_commit_sha"]
+    assert (repo / "upstream.txt").read_text(encoding="utf-8") == "upstream update\n"
+    assert (repo / "custom.txt").read_text(encoding="utf-8") == "custom work\n"
+    baseline = json.loads((repo / ".usc" / "upstream-baseline.json").read_text(encoding="utf-8"))
+    assert baseline["last_imported_upstream_sha"] == target
+    provenance = json.loads((repo / result["provenance_path"]).read_text(encoding="utf-8"))
+    assert provenance["merge_commit_sha"] == result["merge_commit_sha"]
+    assert provenance["base_sha"] == base
+    parents = git(repo, "rev-list", "--parents", "-n", "1", result["merge_commit_sha"]).split()
+    assert parents[1:] == [original_head, target]
+    assert git(repo, "status", "--porcelain") == ""
+
+
+def test_acceptance_blocks_if_original_head_changed_after_candidate_creation(tmp_path):
+    from customizer.acceptance import accept_sync_candidate
+    from customizer.sync import SyncPlanError
+
+    repo, _, _, _, _, candidate_path, verification_path = _make_verified_candidate(tmp_path)
+    changed_head = commit_file(repo, "new-local-change.txt", "later local work\n", "later customization")
+
+    with pytest.raises(SyncPlanError, match="changed after candidate creation"):
+        accept_sync_candidate(
+            repo, candidate_path, verification_path,
+            upstream_url="https://github.com/upstream/sample-project",
+            approved=True, evidence_reviewed=True,
+        )
+
+    assert git(repo, "rev-parse", "HEAD") == changed_head
+    assert (repo / "new-local-change.txt").exists()
+
+
+def test_acceptance_requires_explicit_approval_and_evidence_review(tmp_path):
+    from customizer.acceptance import accept_sync_candidate
+    from customizer.sync import SyncPlanError
+
+    repo, _, _, _, _, candidate_path, verification_path = _make_verified_candidate(tmp_path)
+    with pytest.raises(SyncPlanError, match="explicit --approve"):
+        accept_sync_candidate(
+            repo, candidate_path, verification_path,
+            upstream_url="https://github.com/upstream/sample-project",
+            evidence_reviewed=True,
+        )
+    with pytest.raises(SyncPlanError, match="--evidence-reviewed"):
+        accept_sync_candidate(
+            repo, candidate_path, verification_path,
+            upstream_url="https://github.com/upstream/sample-project",
+            approved=True,
+        )
+    assert git(repo, "status", "--porcelain") == ""

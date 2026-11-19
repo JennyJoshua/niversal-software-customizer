@@ -10,6 +10,7 @@ from .inspector import InspectionError, inspect_github_repository, inspect_repos
 from .licensing import LicenceScanError, scan_licence_evidence
 from .sync import SyncPlanError, create_sync_candidate, create_sync_plan
 from .verification import create_sync_verification
+from .acceptance import accept_sync_candidate
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -60,6 +61,20 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser.add_argument("--candidate-report", required=True, help="JSON report emitted by sync-candidate.")
     verify_parser.add_argument("--evidence", required=True, help="Reviewer-supplied JSON test evidence.")
     verify_parser.add_argument("--output", help="Write verification report outside the candidate workspace.")
+
+    accept_parser = subparsers.add_parser(
+        "sync-accept", help="Accept a verified candidate and fast-forward the unchanged customized branch."
+    )
+    accept_parser.add_argument("--path", required=True, help="Original customized Git working repository.")
+    accept_parser.add_argument("--candidate-report", required=True, help="JSON report emitted by sync-candidate.")
+    accept_parser.add_argument("--verification-report", required=True, help="JSON report emitted by sync-verify.")
+    accept_parser.add_argument("--upstream-url", required=True, help="Canonical HTTPS GitHub owner/repository URL.")
+    accept_parser.add_argument("--approve", action="store_true", help="Explicitly approve updating the original branch.")
+    accept_parser.add_argument(
+        "--evidence-reviewed", action="store_true",
+        help="Confirm that you personally reviewed the supplied CI/test evidence; it is not independently authenticated."
+    )
+    accept_parser.add_argument("--output", help="Write acceptance report outside both repositories.")
 
     return parser
 
@@ -114,7 +129,7 @@ def main(argv: list[str] | None = None) -> int:
                 approved=args.approve, rights_reviewed=args.rights_reviewed,
             )
             _write_report(report, args.output, source_root)
-        else:
+        elif args.command == "sync-verify":
             report = create_sync_verification(args.candidate_report, args.evidence)
             candidate_data = json.loads(Path(args.candidate_report).expanduser().read_text(encoding="utf-8"))
             candidate_path = Path(candidate_data["candidate_path"]).expanduser().resolve()
@@ -123,6 +138,22 @@ def main(argv: list[str] | None = None) -> int:
                 if output_path == candidate_path or candidate_path in output_path.parents:
                     raise ValueError("Verification report output must be outside the candidate workspace.")
             _write_report(report, args.output, candidate_path)
+        else:
+            source_root = Path(args.path).expanduser().resolve()
+            candidate_data = json.loads(Path(args.candidate_report).expanduser().read_text(encoding="utf-8"))
+            candidate_path = Path(candidate_data["candidate_path"]).expanduser().resolve()
+            if args.output:
+                output_path = Path(args.output).expanduser().resolve()
+                if output_path == source_root or source_root in output_path.parents:
+                    raise ValueError("Acceptance report output must be outside the original repository.")
+                if output_path == candidate_path or candidate_path in output_path.parents:
+                    raise ValueError("Acceptance report output must be outside the candidate workspace.")
+            report = accept_sync_candidate(
+                source_root, args.candidate_report, args.verification_report,
+                upstream_url=args.upstream_url, approved=args.approve,
+                evidence_reviewed=args.evidence_reviewed,
+            )
+            _write_report(report, args.output, source_root)
         return 0
     except (InspectionError, LicenceScanError, SyncPlanError, ValueError, OSError, KeyError) as exc:
         print(f"usc: operation blocked: {exc}", file=sys.stderr)
