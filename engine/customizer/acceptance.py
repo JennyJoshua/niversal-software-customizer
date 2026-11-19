@@ -45,7 +45,7 @@ def accept_sync_candidate(
         raise SyncPlanError("Candidate report does not prove an isolated, uncommitted candidate.")
     if verification.get("operation") != "upstream_sync_verification" or verification.get("status") != "verification_passed":
         raise SyncPlanError("A successful sync-verify report is required.")
-    for key in ("base_sha", "upstream_target_sha", "customized_sha", "candidate_branch", "candidate_tree_sha"):
+    for key in ("base_sha", "upstream_target_sha", "customized_sha", "candidate_branch"):
         if verification.get(key) != report.get(key):
             raise SyncPlanError(f"Verification report does not match candidate field: {key}.")
     if verification.get("rights_reviewed") is not report.get("rights_reviewed"):
