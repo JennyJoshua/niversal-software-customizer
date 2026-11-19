@@ -203,6 +203,7 @@ Run the reported push command using your normal GitHub authentication. CI runs o
 ```bash
 usc sync-verify --candidate-report ../candidate-report.json \
   --evidence ../verification-evidence.json \
+  --snapshot-report ../snapshot-report.json \
   --github-run-url https://github.com/OWNER/FORK/actions/runs/RUN_ID \
   --github-repo OWNER/FORK \
   --workflow-id TRUSTED_WORKFLOW_ID \

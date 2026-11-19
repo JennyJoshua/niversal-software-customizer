@@ -100,7 +100,7 @@ def test_authenticates_successful_run_for_exact_candidate_tree_and_pinned_workfl
         ("status", "in_progress", "completed"),
         ("conclusion", "failure", "conclusion=success"),
         ("event", "pull_request", "push-triggered"),
-        ("head_branch", "main", "usc-verify/"),
+        ("head_branch", "main", "published verification snapshot"),
         ("workflow_id", 99, "pinned workflow identity"),
         ("path", ".github/workflows/other.yml", "pinned workflow identity"),
     ],
@@ -156,6 +156,9 @@ def test_rejects_noncanonical_or_untrusted_run_urls(url):
             expected_workflow_id=42,
             expected_workflow_path=WORKFLOW_PATH,
             expected_workflow_blob_sha=WORKFLOW_BLOB,
+            expected_head_sha=HEAD,
+            expected_parent_sha=PARENT,
+            expected_branch=BRANCH,
         )
 
 

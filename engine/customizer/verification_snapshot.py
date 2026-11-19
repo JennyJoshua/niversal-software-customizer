@@ -91,7 +91,7 @@ def create_sync_verification_snapshot(
     merge_head = _git(candidate, "rev-parse", "--verify", "MERGE_HEAD^{commit}", check=False)
     if merge_head.returncode or merge_head.stdout.strip().lower() != target:
         raise SyncPlanError("Candidate is no longer in the expected uncommitted merge state.")
-    if _git(candidate, "diff", "--name-only", "--diff-filter=U", "-z").stdout.strip("\\0"):
+    if _git(candidate, "diff", "--name-only", "--diff-filter=U", "-z").stdout.strip("\0"):
         raise SyncPlanError("Candidate contains unresolved merge conflicts.")
     if _git(candidate, "diff", "--quiet", check=False).returncode:
         raise SyncPlanError("Candidate has unstaged file changes; snapshotting is blocked.")
