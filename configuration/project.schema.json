@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/JennyJoshua/universal-software-customizer/blob/main/configuration/project.schema.json",
+  "title": "USC Project Configuration",
+  "description": "Versioned, declarative identity and source configuration for one customized project.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "project_id", "source", "adapter", "licence_review"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "project_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository_url", "revision"],
+      "properties": {
+        "repository_url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://[A-Za-z0-9.-]+(?::[0-9]+)?/[^?#\\s]+$",
+          "maxLength": 2048
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^(?!-)(?!.*\\s).+$"
+        }
+      }
+    },
+    "adapter": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+    },
+    "licence_review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "review_record"],
+      "properties": {
+        "status": {
+          "enum": ["not_reviewed", "pending", "approved", "rejected", "requires_review"]
+        },
+        "review_record": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["reviewer", "reviewed_at", "evidence_url"],
+              "properties": {
+                "reviewer": { "type": "string", "minLength": 1, "maxLength": 120 },
+                "reviewed_at": { "type": "string", "format": "date-time" },
+                "evidence_url": {
+                  "type": "string",
+                  "format": "uri",
+                  "pattern": "^https://[A-Za-z0-9.-]+(?::[0-9]+)?(?:/[^?#\\s]*)?$",
+                  "maxLength": 2048
+                },
+                "notes": { "type": "string", "maxLength": 2000 }
+              }
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "approved" } }, "required": ["status"] },
+          "then": { "properties": { "review_record": { "type": "object" } } }
+        }
+      ]
+    }
+  }
+}

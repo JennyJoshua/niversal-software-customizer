@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/JennyJoshua/universal-software-customizer/blob/main/configuration/branding.schema.json",
+  "title": "USC Branding Configuration",
+  "description": "Versioned brand intent. Adapters may apply only fields and paths they explicitly support.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "brand", "visual"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "brand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product_name"],
+      "properties": {
+        "product_name": { "type": "string", "minLength": 1, "maxLength": 100, "pattern": ".*\\S.*" },
+        "publisher_name": { "type": "string", "minLength": 1, "maxLength": 100, "pattern": ".*\\S.*" },
+        "tagline": { "type": "string", "maxLength": 160 },
+        "website_url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://[A-Za-z0-9.-]+(?::[0-9]+)?(?:/[^?#\\s]*)?$",
+          "maxLength": 2048
+        },
+        "support_url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://[A-Za-z0-9.-]+(?::[0-9]+)?(?:/[^?#\\s]*)?$",
+          "maxLength": 2048
+        }
+      }
+    },
+    "visual": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "primary_color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "secondary_color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "logo_path": { "$ref": "#/$defs/assetPath" },
+        "favicon_path": { "$ref": "#/$defs/assetPath" }
+      }
+    },
+    "text_overrides": {
+      "type": "object",
+      "maxProperties": 100,
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_.-]{0,63}$" },
+      "additionalProperties": { "type": "string", "maxLength": 1000 }
+    },
+    "notes": { "type": "string", "maxLength": 2000 }
+  },
+  "$defs": {
+    "assetPath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240,
+      "pattern": "^(?!/)(?!.*//)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*(?:^|/)(?:\\.git|\\.usc)(?:/|$))(?!.*[\\\\*?\\[\\]])[A-Za-z0-9._/-]+$"
+    }
+  }
+}

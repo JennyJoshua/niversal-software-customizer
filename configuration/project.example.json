@@ -3,7 +3,7 @@
   "project_id": "sample-web-product",
   "source": {
     "repository_url": "https://github.com/example/example-web-app",
-    "revision": "REPLACE_WITH_TAG_OR_COMMIT_SHA"
+    "revision": "v1.0.0"
   },
   "adapter": "web",
   "licence_review": {
