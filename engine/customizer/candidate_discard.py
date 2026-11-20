@@ -153,9 +153,9 @@ def discard_sync_candidate(
         ):
             raise SyncPlanError("Pre-provenance candidate contains unsafe metadata paths; refusing to discard.")
         allowed_metadata = {".usc/upstream-baseline.json", ".usc/provenance/sync-" + target + ".json"}
-        tracked_changes = _git(candidate, "diff", "--name-only", "-z", "HEAD").stdout.split("\\0")
-        untracked_changes = _git(candidate, "ls-files", "--others", "--exclude-standard", "-z").stdout.split("\\0")
-        ignored_changes = _git(candidate, "ls-files", "--others", "--ignored", "--exclude-standard", "-z").stdout.split("\\0")
+        tracked_changes = _git(candidate, "diff", "--name-only", "-z", "HEAD").stdout.split("\0")
+        untracked_changes = _git(candidate, "ls-files", "--others", "--exclude-standard", "-z").stdout.split("\0")
+        ignored_changes = _git(candidate, "ls-files", "--others", "--ignored", "--exclude-standard", "-z").stdout.split("\0")
         changed_paths = {path for path in tracked_changes + untracked_changes + ignored_changes if path}
         if not changed_paths.issubset(allowed_metadata):
             raise SyncPlanError("Pre-provenance candidate has changes outside generated provenance paths (" + ", ".join(sorted(changed_paths)) + "); inspect it manually instead of discarding.")
@@ -184,9 +184,9 @@ def discard_sync_candidate(
         raise SyncPlanError("Candidate identity changed immediately before discard; candidate was retained.")
     if candidate_state == "merge_committed_before_provenance":
         final_parents = _git(candidate, "rev-list", "--parents", "-n", "1", final_candidate_head).stdout.strip().split()
-        final_tracked = _git(candidate, "diff", "--name-only", "-z", "HEAD").stdout.split("\\0")
-        final_untracked = _git(candidate, "ls-files", "--others", "--exclude-standard", "-z").stdout.split("\\0")
-        final_ignored = _git(candidate, "ls-files", "--others", "--ignored", "--exclude-standard", "-z").stdout.split("\\0")
+        final_tracked = _git(candidate, "diff", "--name-only", "-z", "HEAD").stdout.split("\0")
+        final_untracked = _git(candidate, "ls-files", "--others", "--exclude-standard", "-z").stdout.split("\0")
+        final_ignored = _git(candidate, "ls-files", "--others", "--ignored", "--exclude-standard", "-z").stdout.split("\0")
         final_changed = {path for path in final_tracked + final_untracked + final_ignored if path}
         if final_parents != [final_candidate_head, customized, target] or not final_changed.issubset(allowed_metadata):
             raise SyncPlanError("Pre-provenance candidate changed immediately before discard; candidate was retained.")
