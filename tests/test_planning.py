@@ -63,7 +63,7 @@ def test_dry_run_reports_candidate_but_does_not_claim_unimplemented_adapter(tmp_
     assert first["requested_fields"] == [
         "brand.product_name", "brand.publisher_name", "brand.support_url",
         "brand.tagline", "brand.website_url", "visual.favicon_path",
-        "visual.primary_color", "visual.secondary_color", "visual.logo_path",
+        "visual.logo_path", "visual.primary_color", "visual.secondary_color",
     ]
     assert first["planned_changes"] == []
     assert first["unsupported_fields"] == first["requested_fields"]
