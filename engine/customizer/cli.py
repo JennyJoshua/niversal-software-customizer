@@ -10,6 +10,7 @@ from .inspector import InspectionError, inspect_github_repository, inspect_repos
 from .licensing import LicenceScanError, scan_licence_evidence
 from .customizations import inspect_customization_registry
 from .configuration import validate_project_branding_configuration
+from .planning import detect_adapters, create_customization_dry_run
 from .sync import SyncPlanError, create_sync_candidate, create_sync_plan, resolve_sync_base
 from .verification import create_sync_verification
 from .verification_snapshot import create_sync_verification_snapshot
@@ -50,6 +51,16 @@ def build_parser() -> argparse.ArgumentParser:
     config_parser.add_argument("--project-config", required=True, help="Path to project.json configuration.")
     config_parser.add_argument("--branding-config", required=True, help="Path to branding.json configuration.")
     config_parser.add_argument("--output", help="Write JSON report outside the project directory.")
+
+    detect_parser = subparsers.add_parser("adapter-detect", help="Detect technology and adapter candidates without executing project code.")
+    detect_parser.add_argument("--path", required=True, help="Existing local source directory.")
+    detect_parser.add_argument("--output", help="Write JSON report outside the source directory.")
+
+    plan_parser = subparsers.add_parser("customize-plan", help="Create a read-only branding dry-run plan; no changes are applied.")
+    plan_parser.add_argument("--path", required=True, help="Existing local source directory.")
+    plan_parser.add_argument("--project-config", required=True, help="Path to project.json configuration.")
+    plan_parser.add_argument("--branding-config", required=True, help="Path to branding.json configuration.")
+    plan_parser.add_argument("--output", help="Write JSON report outside the source directory.")
 
     sync_parser = subparsers.add_parser(
         "sync-plan", help="Create a read-only three-way upstream synchronization plan."
@@ -168,6 +179,18 @@ def main(argv: list[str] | None = None) -> int:
             )
             _write_report(report, args.output, source_root_arg.resolve())
             if report.get("status") == "blocked":
+                return 2
+        elif args.command == "adapter-detect":
+            source_root = Path(args.path).expanduser().resolve()
+            report = detect_adapters(source_root)
+            _write_report(report, args.output, source_root)
+        elif args.command == "customize-plan":
+            source_root = Path(args.path).expanduser().resolve()
+            report = create_customization_dry_run(
+                source_root, args.project_config, args.branding_config,
+            )
+            _write_report(report, args.output, source_root)
+            if report.get("status", "").startswith("blocked_"):
                 return 2
         elif args.command == "sync-plan":
             source_root = Path(args.path).expanduser().resolve()
