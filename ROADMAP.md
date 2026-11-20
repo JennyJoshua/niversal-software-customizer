@@ -35,7 +35,8 @@
 - [x] Record sync provenance, reviewer/test evidence, rights acknowledgement, and resulting merge commit.
 - [x] Add explicit recovery for interruption after candidate provenance/baseline commit and before original fast-forward, with committed-record integrity checks.
 - [x] Add deletion and rename-with-local-edit conflict tests.
-- [ ] Add recovery for interruption before provenance commit, candidate discard automation, and broader failure-injection tests.
+- [x] Add guarded candidate discard for the uncommitted merge state and the exact pre-provenance merge commit; verify the original repository remains unchanged.
+- [ ] Expand failure-injection coverage for partial provenance writes and additional acceptance/recovery races.
 
 ## Phase 4 — Configuration and branding planning
 

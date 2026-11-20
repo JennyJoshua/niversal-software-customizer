@@ -171,7 +171,21 @@ usc sync-recover --path ./customized-repository \\
   --output ../recovery-report.json
 \`\`\`
 
-Recovery validates the candidate's merge parents, committed provenance, and baseline before fast-forwarding. It refuses a changed or dirty original branch. If interruption occurred before the candidate provenance/baseline commit was completed, discard the candidate and create a fresh candidate; the original branch remains unchanged. Recovery is idempotent after a successful fast-forward.
+Recovery validates the candidate's merge parents, committed provenance, and baseline before fast-forwarding. It refuses a changed or dirty original branch. If interruption occurred before provenance/baseline were committed, recovery deliberately refuses; use the guarded discard command below, then create a fresh candidate. The original branch remains unchanged. Recovery is idempotent after a successful fast-forward.
+
+
+## Discard an unaccepted or interrupted candidate
+
+Use this command when a candidate is blocked, cannot be accepted, or acceptance stopped before provenance/baseline were committed:
+
+```bash
+usc sync-discard --path ./customized-repository \\
+  --candidate-report ../candidate-report.json \\
+  --approve \\
+  --output ../discard-report.json
+```
+
+Discard requires explicit `--approve`. It accepts the original uncommitted merge state or the exact two-parent merge commit created immediately before provenance writing. For the committed state, USC checks the parent order, recomputes the expected merge tree, requires a clean candidate, verifies no new target provenance was written, and confirms the baseline still matches the customized parent. It refuses altered or dirty committed candidates. Only the recorded candidate workspace is removed; the original customized repository and its branch are not changed, and remote verification refs are not deleted.
 
 
 ## Independently authenticate GitHub Actions evidence
