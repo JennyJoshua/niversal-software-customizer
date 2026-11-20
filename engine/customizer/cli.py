@@ -162,11 +162,11 @@ def main(argv: list[str] | None = None) -> int:
             if report.get("status") == "blocked":
                 return 2
         elif args.command == "config-check":
-            source_root = Path(args.path).expanduser().resolve()
+            source_root_arg = Path(args.path).expanduser()
             report = validate_project_branding_configuration(
-                source_root, args.project_config, args.branding_config,
+                source_root_arg, args.project_config, args.branding_config,
             )
-            _write_report(report, args.output, source_root)
+            _write_report(report, args.output, source_root_arg.resolve())
             if report.get("status") == "blocked":
                 return 2
         elif args.command == "sync-plan":
