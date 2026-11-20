@@ -353,6 +353,16 @@ def recover_sync_acceptance(repository: str | Path, candidate_report_path: str |
     if committed_baseline != baseline or committed_provenance != provenance:
         raise SyncPlanError("Candidate working provenance differs from the committed provenance/baseline records.")
 
+    candidate_head_now = _git(candidate, "rev-parse", "--verify", "HEAD^{commit}").stdout.strip().lower()
+    candidate_branch_now = _git(candidate, "symbolic-ref", "--quiet", "--short", "HEAD", check=False)
+    candidate_status_now = _git(candidate, "status", "--porcelain=v1", "--untracked-files=all").stdout
+    if (
+        candidate_head_now != final_tip
+        or candidate_branch_now.returncode != 0
+        or candidate_branch_now.stdout.strip() != candidate_branch
+        or candidate_status_now
+    ):
+        raise SyncPlanError("Candidate changed during recovery validation; recovery is blocked.")
     head = _git(repo, "rev-parse", "--verify", "HEAD^{commit}").stdout.strip().lower()
     status = _git(repo, "status", "--porcelain=v1", "--untracked-files=all").stdout
     branch = _git(repo, "symbolic-ref", "--quiet", "--short", "HEAD", check=False)
@@ -368,8 +378,13 @@ def recover_sync_acceptance(repository: str | Path, candidate_report_path: str |
     if _git(repo, "merge-base", head, target).stdout.strip().lower() != base:
         raise SyncPlanError("Original repository no longer has the expected upstream merge base.")
     _git(repo, "-c", "protocol.file.allow=always", "fetch", "--no-tags", "--no-recurse-submodules", "--", str(candidate), final_tip)
-    if _git(repo, "rev-parse", "--verify", "HEAD^{commit}").stdout.strip().lower() != customized:
-        raise SyncPlanError("Original HEAD changed during recovery; fast-forward was not attempted.")
+    branch_after_fetch = _git(repo, "symbolic-ref", "--quiet", "--short", "HEAD", check=False)
+    if (
+        branch_after_fetch.returncode != 0
+        or branch_after_fetch.stdout.strip() != original_branch
+        or _git(repo, "rev-parse", "--verify", "HEAD^{commit}").stdout.strip().lower() != customized
+    ):
+        raise SyncPlanError("Original branch or HEAD changed during recovery; fast-forward was not attempted.")
     if _git(repo, "status", "--porcelain=v1", "--untracked-files=all").stdout:
         raise SyncPlanError("Original working tree changed during recovery; fast-forward was not attempted.")
     _git(repo, "merge", "--ff-only", "--no-edit", final_tip)
