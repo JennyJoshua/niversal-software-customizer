@@ -9,6 +9,7 @@ from pathlib import Path
 from .inspector import InspectionError, inspect_github_repository, inspect_repository
 from .licensing import LicenceScanError, scan_licence_evidence
 from .customizations import inspect_customization_registry
+from .configuration import validate_project_branding_configuration
 from .sync import SyncPlanError, create_sync_candidate, create_sync_plan, resolve_sync_base
 from .verification import create_sync_verification
 from .verification_snapshot import create_sync_verification_snapshot
@@ -42,7 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
     registry_parser.add_argument("--path", required=True, help="Existing customized project directory.")
     registry_parser.add_argument("--output", help="Write JSON report outside the project directory.")
 
-    sync_parser = subparsers.add_parser(
+    config_parser = subparsers.add_parser(\n        "config-check", help="Validate project and branding configuration without changing or executing project files."\n    )\n    config_parser.add_argument("--path", required=True, help="Existing customized project directory.")\n    config_parser.add_argument("--project-config", required=True, help="Path to project.json configuration.")\n    config_parser.add_argument("--branding-config", required=True, help="Path to branding.json configuration.")\n    config_parser.add_argument("--output", help="Write JSON report outside the project directory.")\n\n    sync_parser = subparsers.add_parser(
         "sync-plan", help="Create a read-only three-way upstream synchronization plan."
     )
     sync_parser.add_argument("--path", required=True, help="Customized Git working repository.")
@@ -152,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
             _write_report(report, args.output, source_root)
             if report.get("status") == "blocked":
                 return 2
-        elif args.command == "sync-plan":
+        elif args.command == "config-check":\n            source_root = Path(args.path).expanduser().resolve()\n            report = validate_project_branding_configuration(\n                source_root, args.project_config, args.branding_config,\n            )\n            _write_report(report, args.output, source_root)\n            if report.get("status") == "blocked":\n                return 2\n        elif args.command == "sync-plan":
             source_root = Path(args.path).expanduser().resolve()
             base_sha = resolve_sync_base(source_root, base_sha=args.base_sha, upstream_url=args.upstream_url)
             report = create_sync_plan(source_root, base_sha, args.target_sha)
