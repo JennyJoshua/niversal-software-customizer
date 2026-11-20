@@ -262,3 +262,11 @@ Protection modes:
 Optional `evidence_refs` must be credential-free HTTPS URLs without query strings or fragments. Exact file paths must exist, be regular files, use POSIX separators, and must not traverse symlinks. Globs, absolute paths, `.git`, and `.usc` metadata paths are rejected. See `configuration/customizations.schema.json` for the editor-facing JSON Schema.
 
 A missing registry returns `not_configured` and does not change existing sync behaviour. A valid registry report explicitly sets `feature_protection_enforced: false`: v1 validates declarations only. Registry-aware change classification, regression-test selection, and acceptance enforcement are later implementation steps.
+
+## Cleaning up a completed verification snapshot ref
+
+Verification snapshots are temporary branches under `usc-verify/`. They are not product branches and must never be merged into the product branch. USC does not delete them automatically.
+
+When a snapshot is no longer needed (the related candidate was accepted or safely discarded), a repository maintainer may use the manually dispatched **USC Verification Ref Cleanup** workflow. Supply the exact branch name and its full expected snapshot commit SHA, then set `confirm_delete` to `true`. The workflow refuses other branch names, mismatched tree/target prefixes, multi-parent commits, refs whose current SHA differs, and refs associated with an open pull request. It deletes only the selected ref using a force-with-lease expected-SHA check, then verifies that the ref is absent.
+
+The workflow is not triggered by pushes or pull requests and does not run automatically. No existing verification refs are removed during implementation or testing. A separate explicit manual dispatch is required for each ref.
