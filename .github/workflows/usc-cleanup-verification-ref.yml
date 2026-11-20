@@ -1,0 +1,104 @@
+name: USC Verification Ref Cleanup
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch_name:
+        description: Exact USC verification branch to remove (usc-verify/<target12>-<tree12>)
+        required: true
+        type: string
+      expected_sha:
+        description: Full 40-character snapshot commit SHA expected on that branch
+        required: true
+        type: string
+      confirm_delete:
+        description: Explicitly authorize deletion of this exact ref
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: usc-verification-ref-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate exact USC verification ref and delete with a lease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH_NAME: ${{ inputs.branch_name }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          CONFIRM_DELETE: ${{ inputs.confirm_delete }}
+          REPOSITORY: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$CONFIRM_DELETE" != "true" ]]; then
+            echo "::error::Deletion requires confirm_delete=true."
+            exit 1
+          fi
+          if [[ ! "$BRANCH_NAME" =~ ^usc-verify/[0-9a-f]{12}-[0-9a-f]{12}$ ]]; then
+            echo "::error::Only exact USC verification branch names are eligible."
+            exit 1
+          fi
+          if [[ ! "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::expected_sha must be a full 40-character lowercase commit SHA."
+            exit 1
+          fi
+
+          suffix="${BRANCH_NAME#usc-verify/}"
+          expected_target_prefix="${suffix%%-*}"
+          expected_tree_prefix="${suffix##*-}"
+          full_ref="refs/heads/$BRANCH_NAME"
+          remote_url="https://github.com/$REPOSITORY.git"
+          auth_header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+
+          commit_json="$(gh api "repos/$REPOSITORY/git/commits/$EXPECTED_SHA")"
+          tree_sha="$(jq -r '.tree.sha // empty' <<< "$commit_json")"
+          parent_count="$(jq '.parents | length' <<< "$commit_json")"
+          commit_message="$(jq -r '.message // empty' <<< "$commit_json")"
+          target_sha="$(sed -nE 's/^USC verification snapshot for upstream ([0-9a-f]{40})$/\1/p' <<< "$commit_message")"
+
+          if [[ "$parent_count" != "1" || ! "$tree_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Commit is not a one-parent USC verification snapshot."
+            exit 1
+          fi
+          if [[ "${tree_sha:0:12}" != "$expected_tree_prefix" || "${target_sha:0:12}" != "$expected_target_prefix" ]]; then
+            echo "::error::Branch name does not match the snapshot commit tree and upstream target."
+            exit 1
+          fi
+
+          open_pr_count="$(gh api --method GET "repos/$REPOSITORY/pulls" -f state=open -f head="$OWNER:$BRANCH_NAME" --jq 'length')"
+          if [[ "$open_pr_count" != "0" ]]; then
+            echo "::error::The verification branch is associated with an open pull request; refusing cleanup."
+            exit 1
+          fi
+
+          remote_line="$(GIT_TERMINAL_PROMPT=0 git -c http.extraheader="$auth_header" ls-remote --heads "$remote_url" "$full_ref")"
+          remote_sha="${remote_line%%$'\t'*}"
+          if [[ "$remote_sha" != "$EXPECTED_SHA" ]]; then
+            echo "::error::Remote ref is missing or no longer points to expected_sha; refusing cleanup."
+            exit 1
+          fi
+
+          echo "Validated exact USC verification ref: $BRANCH_NAME"
+          echo "Snapshot commit: $EXPECTED_SHA"
+          echo "Deleting only this ref with an expected-SHA lease."
+
+          GIT_TERMINAL_PROMPT=0 git -c http.extraheader="$auth_header" -c core.hooksPath=/dev/null \
+            push --force-with-lease="$full_ref:$EXPECTED_SHA" "$remote_url" ":$full_ref"
+
+          remaining="$(GIT_TERMINAL_PROMPT=0 git -c http.extraheader="$auth_header" ls-remote --heads "$remote_url" "$full_ref")"
+          if [[ -n "$remaining" ]]; then
+            echo "::error::The verification ref still exists after the delete attempt."
+            exit 1
+          fi
+          echo "Successfully removed $full_ref."
