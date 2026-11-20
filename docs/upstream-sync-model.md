@@ -138,7 +138,7 @@ Acceptance:
 
 If a pre-update gate fails, the original branch and baseline remain unchanged. Acceptance does not run project scripts or tests. The baseline and provenance become part of the original branch only when the fast-forward succeeds.
 
-The verifier supports independently authenticated GitHub Actions evidence when supplied with the trusted repository, workflow ID/path/blob SHA, and exact-tree snapshot report. Reviewer-supplied evidence remains explicitly unauthenticated when authenticated mode is not used. USC now provides guarded candidate discard for an unaccepted candidate; if interruption occurs before provenance and baseline are committed, recovery refuses and the candidate must be discarded and recreated.
+The verifier supports independently authenticated GitHub Actions evidence when supplied with the trusted repository, workflow ID/path/blob SHA, and exact-tree snapshot report. Reviewer-supplied evidence remains explicitly unauthenticated when authenticated mode is not used. USC provides guarded candidate discard for an unaccepted candidate; if interruption occurs before provenance and baseline are committed, recovery refuses and the candidate must be discarded and recreated.
 
 
 ## Recovery after an interrupted acceptance
