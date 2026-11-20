@@ -1212,7 +1212,7 @@ def test_sync_discard_rejects_dirty_pre_provenance_merge_commit(tmp_path):
         "commit", "--no-edit")
     (workspace / "unexpected.txt").write_text("unexpected\n", encoding="utf-8")
 
-    with pytest.raises(SyncPlanError, match="uncommitted changes"):
+    with pytest.raises(SyncPlanError, match="changes outside generated provenance paths"):
         discard_sync_candidate(repo, candidate_path, approved=True)
 
     assert workspace.is_dir()
@@ -1266,6 +1266,47 @@ def test_acceptance_interrupted_after_merge_commit_can_be_safely_discarded(tmp_p
     assert git(workspace, "rev-list", "--parents", "-n", "1", "HEAD").split()[1:] == [
         original_head, candidate["upstream_target_sha"]
     ]
+    assert git(repo, "rev-parse", "HEAD") == original_head
+    result = discard_sync_candidate(repo, candidate_path, approved=True)
+
+    assert result["candidate_state"] == "merge_committed_before_provenance"
+    assert not workspace.exists()
+    assert git(repo, "rev-parse", "HEAD") == original_head
+    assert not (repo / "upstream.txt").exists()
+
+def test_acceptance_interrupted_during_provenance_write_can_be_discarded(tmp_path, monkeypatch):
+    import json
+    from customizer import acceptance
+    from customizer.candidate_discard import discard_sync_candidate
+    from customizer.verification import create_sync_verification
+
+    repo, candidate, candidate_path, workspace = _make_registry_candidate(tmp_path)
+    original_head = git(repo, "rev-parse", "HEAD")
+    evidence_path = tmp_path / "evidence.json"
+    evidence_path.write_text(json.dumps(_registry_verification_evidence(candidate, workspace)), encoding="utf-8")
+    verification = create_sync_verification(candidate_path, evidence_path)
+    verification_path = tmp_path / "verification-report.json"
+    verification_path.write_text(json.dumps(verification), encoding="utf-8")
+
+    original_write_text = Path.write_text
+    provenance_file = workspace / ".usc" / "provenance" / ("sync-" + candidate["upstream_target_sha"] + ".json")
+
+    def interrupt_after_provenance_write(path, data, *args, **kwargs):
+        result = original_write_text(path, data, *args, **kwargs)
+        if Path(path) == provenance_file:
+            raise OSError("simulated interruption after provenance write")
+        return result
+
+    monkeypatch.setattr(Path, "write_text", interrupt_after_provenance_write)
+    with pytest.raises(OSError, match="simulated interruption after provenance write"):
+        acceptance.accept_sync_candidate(
+            repo, candidate_path, verification_path,
+            upstream_url="https://github.com/upstream/sample-project",
+            approved=True, evidence_reviewed=True,
+        )
+
+    assert provenance_file.is_file()
+    assert not (workspace / ".usc" / "upstream-baseline.json").exists()
     assert git(repo, "rev-parse", "HEAD") == original_head
     result = discard_sync_candidate(repo, candidate_path, approved=True)
 
