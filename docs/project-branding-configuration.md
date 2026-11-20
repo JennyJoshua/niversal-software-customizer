@@ -21,4 +21,4 @@ Examples are provided as `project.example.json` and `branding.example.json`. Bot
 - An adapter may apply only explicitly supported fields and allowlisted files. Unsupported fields must be reported, not guessed or applied.
 - Licence and attribution notices remain protected regardless of branding configuration.
 
-The schemas define input shape. Runtime validation and adapter-specific planning remain separate, read-only operations and are implemented/tested in the engine.
+The schemas define input shape and are validated in CI against their example documents and invalid-input cases. Runtime validation of repository-relative assets, symlinks, and protected paths, plus adapter-specific detection and dry-run planning, remain future read-only engine work. No branding changes are applied by schema validation.
