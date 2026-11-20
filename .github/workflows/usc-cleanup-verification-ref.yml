@@ -98,7 +98,7 @@ jobs:
           GIT_TERMINAL_PROMPT=0 git -C "$git_dir" -c http.extraheader="$auth_header" -c core.hooksPath=/dev/null \
             push --force-with-lease="$full_ref:$EXPECTED_SHA" "$remote_url" ":$full_ref"
 
-          remaining="$(GIT_TERMINAL_PROMPT=0 git -c http.extraheader="$auth_header" ls-remote --heads "$remote_url" "$full_ref")"
+          remaining="$(GIT_TERMINAL_PROMPT=0 git -C "$git_dir" -c http.extraheader="$auth_header" ls-remote --heads "$remote_url" "$full_ref")"
           if [[ -n "$remaining" ]]; then
             echo "::error::The verification ref still exists after the delete attempt."
             exit 1
