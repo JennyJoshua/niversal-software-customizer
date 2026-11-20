@@ -1030,7 +1030,9 @@ def test_sync_discard_rejects_candidate_with_wrong_origin(tmp_path):
     from customizer.candidate_discard import discard_sync_candidate
 
     repo, candidate, candidate_path, workspace = _make_registry_candidate(tmp_path)
-    other_repo, _ = init_repo(tmp_path / "other-origin")
+    other_origin = tmp_path / "other-origin"
+    other_origin.mkdir()
+    other_repo, _ = init_repo(other_origin)
     git(workspace, "remote", "set-url", "origin", str(other_repo))
 
     with pytest.raises(SyncPlanError, match="origin does not identify"):
