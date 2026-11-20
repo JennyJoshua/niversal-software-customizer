@@ -32,15 +32,11 @@ The CLI command is:
 usc sync-plan --path ./customized-repository --base-sha <base-sha> --target-sha <target-sha>
 ```
 
-The planner:
-- Requires full commit SHAs, complete local history, a clean working tree, and the base as the exact merge base of customized HEAD and upstream target.
-- Rejects repository-local custom merge/filter drivers and external filesystem monitors.
-- Reports upstream and local changed paths, path overlaps, and upstream rights/notice file changes.
-- Uses `git merge-tree --write-tree` for a non-mutating three-way merge preflight.
-- Marks a plan blocked when Git reports merge conflicts.
-- Does not fetch, checkout, merge, write files, update refs, execute hooks, or run project scripts.
+The planner requires full commit SHAs, complete local history, a clean working tree, and the base as the exact merge base of customized HEAD and upstream target. It rejects repository-local custom merge/filter drivers and external filesystem monitors, reports upstream/local path changes and rights/notice changes, and runs a non-mutating Git three-way merge preflight.
 
-A `ready_for_review` status is not approval and not proof of semantic compatibility. It only means Git's preflight found no merge conflict. The planner is not an integration acceptance engine.
+When `.usc/customizations.json` is present, the planner also validates the registry and reports affected customizations, path ownership, protection modes, and required regression-test IDs. It blocks invalid registries, upstream edits to registered custom-only paths, protected mixed-ownership deletions, affected `block_for_review` entries, and unmapped overlapping changes. A missing registry remains backward-compatible (`not_configured`).
+
+Planning does not fetch, checkout, merge, write files, update refs, execute hooks, or run project scripts. A `ready_for_review` status is not approval or proof of semantic compatibility.
 
 ## Current implementation: isolated candidate creation
 
@@ -115,9 +111,9 @@ The candidate report is emitted by `sync-candidate --output ../candidate-report.
 - Reviewer identity and an ISO-8601 timestamp with an explicit timezone.
 - The rights-review acknowledgement matching the candidate report.
 
-The verifier re-checks candidate branch, original customized HEAD, upstream MERGE_HEAD, unresolved conflicts, unstaged/untracked changes, and exact tree SHA. Stale or modified candidates and failed test evidence are blocked. It never runs source scripts or tests.
+The verifier re-checks candidate branch, original customized HEAD, upstream MERGE_HEAD, unresolved conflicts, unstaged/untracked changes, and exact tree SHA. It also requires a passing result with a non-empty evidence reference for every registry-required test ID and records the required/verified ID sets. Stale or modified candidates and failed or incomplete test evidence are blocked. It never runs source scripts or tests.
 
-**Trust limitation:** evidence is reviewer-supplied JSON. The verifier checks its structure and binds it to the candidate tree, but does not independently authenticate the CI provider, log URLs, reviewer identity, or test execution. The report explicitly sets `evidence_authenticated=false`. A trusted CI evidence policy is still required before automatic acceptance.
+**Trust limitation:** reviewer-supplied JSON remains unauthenticated unless the authenticated GitHub Actions mode is used. Authenticated mode independently checks the trusted repository, completed successful run, workflow identity and pinned workflow blob, snapshot commit/parent/tree, and successful jobs. Neither mode executes project tests or independently proves that the supplied test command was appropriate.
 
 ## Current implementation: explicit acceptance and baseline advancement
 
@@ -142,7 +138,7 @@ Acceptance:
 
 If a pre-update gate fails, the original branch and baseline remain unchanged. Acceptance does not run project scripts or tests. The baseline and provenance become part of the original branch only when the fast-forward succeeds.
 
-The current verifier still trusts reviewer-supplied evidence structure and references; it does not independently authenticate GitHub Actions. Automated candidate discard/interruption recovery and a trusted CI attestation policy remain outstanding.
+The verifier supports independently authenticated GitHub Actions evidence when supplied with the trusted repository, workflow ID/path/blob SHA, and exact-tree snapshot report. Reviewer-supplied evidence remains explicitly unauthenticated when authenticated mode is not used. Automated candidate discard and recovery before provenance/baseline commits remain outstanding.
 
 
 ## Recovery after an interrupted acceptance
@@ -159,22 +155,17 @@ Recovery checks that the candidate worktree is clean, the committed provenance/b
 If interruption happened before provenance and baseline were committed, recovery deliberately refuses; discard the candidate and create a fresh one. The original customized branch remains the authoritative copy.
 
 
-## Selective synchronization and structured-file merge — future specification
+## Registry-aware selective synchronization — implemented
 
-The current implementation classifies Git paths and uses Git's three-way merge. It does not yet understand feature ownership inside a file or perform format-aware merges. These are separate future capabilities and must not be described as implemented.
+The v1 registry at `.usc/customizations.json` participates in read-only sync planning and candidate verification/acceptance. It adds feature ownership context to Git path-level planning; it does not replace Git history or the three-way merge base.
 
-### Selective synchronization
+Required test IDs are carried into the isolated candidate report. Verification requires passing evidence with a non-empty evidence reference for every required ID and binds the verification report to the exact candidate tree SHA. Acceptance recomputes the current sync plan and rejects missing, stale, failed, or mismatched evidence. USC validates supplied evidence but does not execute project-specific tests or guarantee semantic preservation.
 
-Use the machine-readable customization registry defined in `docs/custom-feature-protection-policy.md` to add context to path-level planning. The registry must not replace Git history or the three-way merge base. It should identify:
-- Which custom features/configurations/contracts are touched by each changed path.
-- Whether the changed area requires preservation checks, targeted regression tests, or human resolution.
-- Cases where upstream and custom code share a file and therefore cannot safely be handled by whole-file exclusion or replacement.
+Whole-file ignore/exclude rules remain prohibited as the primary protection mechanism. Unknown overlaps fail closed.
 
-Do not introduce blanket ignore/exclude rules as the primary protection mechanism. Excluding an entire mixed-ownership file can prevent upstream security fixes; replacing it wholesale can erase custom behaviour. If the registry cannot confidently map a change, mark it unknown and block acceptance pending review.
+## Structured-file merge — future specification
 
-### Structured merge
-
-A later adapter may support format-aware three-way merges for structured configuration files. Implement JSON first, then a deliberately limited YAML subset only after parser and round-trip behaviour is proven. Each merge must:
+The current implementation still uses Git's ordinary three-way merge and does not perform format-aware merges. A later adapter may support format-aware three-way merges for structured configuration files. Implement JSON first, then a deliberately limited YAML subset only after parser and round-trip behaviour is proven. Each merge must:
 - Parse base, upstream, and customized versions independently and reject invalid or ambiguous input.
 - Merge only explicitly supported object/key structures using the three-way base.
 - Treat conflicting scalar edits, delete-versus-edit, duplicate keys, unsupported YAML features, and ambiguous list edits as conflicts.
@@ -201,8 +192,8 @@ The synthetic public-GitHub end-to-end fixture completed successfully:
 - Snapshot tree: `6510cfc50e811eef6e7ca6fbae0176e488391b19`
 - Customized fixture commit: `7dfc827e516fc5dbcc207f3871460581623f88f0`
 - Upstream target: `bf5199c67ec6797baa54ba8a3b12671f1ff25ff5`
-- Authenticated CI push run: https://github.com/JennyJoshua/niversal-software-customizer/actions/runs/44633531926
-- Follow-on acceptance workflow: https://github.com/JennyJoshua/niversal-software-customizer/actions/runs/44633580230
+- Authenticated CI push run: https://github.com/JennyJoshua/universal-software-customizer/actions/runs/44633531926
+- Follow-on acceptance workflow: https://github.com/JennyJoshua/universal-software-customizer/actions/runs/44633580230
 
 The test recreated the candidate from the fixture's public GitHub refs, confirmed its tree exactly matched the published snapshot, authenticated the completed CI run, and accepted the candidate only in a disposable local clone. It verified that the custom-only feature remained intact, the upstream-only improvement was included, and baseline/provenance advanced to the selected upstream target.
 
