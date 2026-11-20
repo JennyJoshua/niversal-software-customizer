@@ -14,6 +14,16 @@ _SHA_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$", re.IGNORECASE)
 _CANDIDATE_BRANCH_PREFIX = "usc-sync-candidate-"
 
 
+def _contains_symlink_component(path: Path) -> bool:
+    absolute = path.absolute()
+    current = Path(absolute.anchor)
+    for part in absolute.parts[1:]:
+        current = current / part
+        if current.is_symlink():
+            return True
+    return False
+
+
 def discard_sync_candidate(
     repository: str | Path,
     candidate_report_path: str | Path,
@@ -30,8 +40,8 @@ def discard_sync_candidate(
         raise SyncPlanError("Candidate discard requires explicit --approve confirmation.")
 
     repo_arg = Path(repository).expanduser()
-    if repo_arg.is_symlink():
-        raise SyncPlanError("Original repository path must not be a symlink.")
+    if _contains_symlink_component(repo_arg):
+        raise SyncPlanError("Original repository path must not contain symlink components.")
     try:
         repo = repo_arg.resolve(strict=True)
     except (OSError, RuntimeError) as exc:
@@ -58,8 +68,8 @@ def discard_sync_candidate(
     if not isinstance(candidate_value, str) or not candidate_value.strip():
         raise SyncPlanError("Candidate report has no candidate_path.")
     candidate_arg = Path(candidate_value).expanduser()
-    if candidate_arg.is_symlink():
-        raise SyncPlanError("Candidate workspace must not be a symlink.")
+    if _contains_symlink_component(candidate_arg):
+        raise SyncPlanError("Candidate workspace path must not contain symlink components.")
     try:
         candidate = candidate_arg.resolve(strict=True)
     except (OSError, RuntimeError) as exc:
@@ -71,8 +81,8 @@ def discard_sync_candidate(
 
     # Require the report to identify this exact path, not merely a similarly
     # named directory supplied by an operator.
-    if str(candidate) != str(Path(candidate_value).expanduser().absolute().resolve(strict=True)):
-        raise SyncPlanError("Candidate path identity is ambiguous; recreate the candidate report.")
+    if not candidate_arg.is_absolute() or ".." in candidate_arg.parts or candidate_arg != candidate:
+        raise SyncPlanError("Candidate path must be an absolute, normalized path without traversal components.")
 
     candidate_branch = report.get("candidate_branch")
     original_branch = report.get("original_branch")
