@@ -1177,3 +1177,98 @@ def test_recovery_rechecks_original_branch_after_fetch(tmp_path, monkeypatch):
     assert not (repo / "upstream.txt").exists()
     assert workspace.is_dir()
     assert original_branch != "recovery-other"
+
+
+def test_sync_discard_removes_exact_pre_provenance_merge_commit(tmp_path):
+    from customizer.candidate_discard import discard_sync_candidate
+
+    repo, candidate, candidate_path, workspace = _make_registry_candidate(tmp_path)
+    original_head = git(repo, "rev-parse", "HEAD")
+    original_feature = (repo / "feature.py").read_text(encoding="utf-8")
+    git(workspace, "-c", "user.name=USC Candidate", "-c", "user.email=usc-candidate@invalid",
+        "commit", "--no-edit")
+    merge_commit = git(workspace, "rev-parse", "HEAD")
+    parents = git(workspace, "rev-list", "--parents", "-n", "1", merge_commit).split()
+
+    result = discard_sync_candidate(repo, candidate_path, approved=True)
+
+    assert parents == [merge_commit, original_head, candidate["upstream_target_sha"]]
+    assert result["status"] == "discarded"
+    assert result["candidate_state"] == "merge_committed_before_provenance"
+    assert result["candidate_workspace_removed"] is True
+    assert not workspace.exists()
+    assert git(repo, "rev-parse", "HEAD") == original_head
+    assert (repo / "feature.py").read_text(encoding="utf-8") == original_feature
+    assert not (repo / "upstream.txt").exists()
+
+
+def test_sync_discard_rejects_dirty_pre_provenance_merge_commit(tmp_path):
+    from customizer.candidate_discard import discard_sync_candidate
+
+    repo, _, candidate_path, workspace = _make_registry_candidate(tmp_path)
+    git(workspace, "-c", "user.name=USC Candidate", "-c", "user.email=usc-candidate@invalid",
+        "commit", "--no-edit")
+    (workspace / "unexpected.txt").write_text("unexpected\n", encoding="utf-8")
+
+    with pytest.raises(SyncPlanError, match="uncommitted changes"):
+        discard_sync_candidate(repo, candidate_path, approved=True)
+
+    assert workspace.is_dir()
+
+
+def test_sync_discard_rejects_commit_after_pre_provenance_merge(tmp_path):
+    from customizer.candidate_discard import discard_sync_candidate
+
+    repo, _, candidate_path, workspace = _make_registry_candidate(tmp_path)
+    git(workspace, "-c", "user.name=USC Candidate", "-c", "user.email=usc-candidate@invalid",
+        "commit", "--no-edit")
+    git(workspace, "-c", "user.name=Unexpected", "-c", "user.email=unexpected@example.invalid",
+        "commit", "--allow-empty", "-m", "unexpected later commit")
+
+    with pytest.raises(SyncPlanError, match="not the exact pre-provenance USC merge commit"):
+        discard_sync_candidate(repo, candidate_path, approved=True)
+
+    assert workspace.is_dir()
+
+
+def test_acceptance_interrupted_after_merge_commit_can_be_safely_discarded(tmp_path, monkeypatch):
+    import json
+    import customizer.acceptance as acceptance
+    from customizer.candidate_discard import discard_sync_candidate
+    from customizer.verification import create_sync_verification
+
+    repo, candidate, candidate_path, workspace = _make_registry_candidate(tmp_path)
+    original_head = git(repo, "rev-parse", "HEAD")
+    evidence_path = tmp_path / "evidence.json"
+    evidence_path.write_text(json.dumps(_registry_verification_evidence(candidate, workspace)), encoding="utf-8")
+    verification = create_sync_verification(candidate_path, evidence_path)
+    verification_path = tmp_path / "verification-report.json"
+    verification_path.write_text(json.dumps(verification), encoding="utf-8")
+
+    original_git = acceptance._git
+
+    def interrupt_after_merge_commit(path, *args, **kwargs):
+        result = original_git(path, *args, **kwargs)
+        if Path(path).resolve() == workspace.resolve() and "commit" in args and "--no-edit" in args:
+            raise SyncPlanError("simulated interruption after candidate merge commit")
+        return result
+
+    monkeypatch.setattr(acceptance, "_git", interrupt_after_merge_commit)
+    with pytest.raises(SyncPlanError, match="simulated interruption after candidate merge commit"):
+        acceptance.accept_sync_candidate(
+            repo, candidate_path, verification_path,
+            upstream_url="https://github.com/upstream/sample-project",
+            approved=True, evidence_reviewed=True,
+        )
+
+    assert git(workspace, "rev-list", "--parents", "-n", "1", "HEAD").split()[1:] == [
+        original_head, candidate["upstream_target_sha"]
+    ]
+    assert git(repo, "rev-parse", "HEAD") == original_head
+    result = discard_sync_candidate(repo, candidate_path, approved=True)
+
+    assert result["candidate_state"] == "merge_committed_before_provenance"
+    assert not workspace.exists()
+    assert git(repo, "rev-parse", "HEAD") == original_head
+    assert not (repo / "upstream.txt").exists()
+
