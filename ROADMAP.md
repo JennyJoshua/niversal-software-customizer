@@ -28,7 +28,7 @@
 - [x] Authenticate CI run metadata and pin the workflow file to a trusted blob SHA.
 - [x] Create an exact-tree verification snapshot locally without changing the original product branch or candidate merge state.
 - [x] Validate a published snapshot through authenticated verification and acceptance end-to-end using synthetic GitHub fixtures.
-- [ ] Remove retained temporary verification/test refs through the new approval-gated cleanup workflow. Each ref requires a separate manual dispatch with its exact branch name and expected SHA; no refs have been deleted yet.
+- [x] Remove both retained temporary verification/test refs through separate manual dispatches of the approval-gated cleanup workflow; both runs succeeded and both refs were independently verified absent (cleanup runs #2 and #3).
 - [x] Resolve the stored upstream baseline by default after validating committed baseline/provenance identity and ancestry; retain explicit SHA overrides.
 - [x] Add explicit candidate acceptance with original-HEAD/branch/clean-tree rechecks and fast-forward-only update.
 - [x] Advance the stored upstream baseline only with the accepted branch update.
@@ -79,7 +79,7 @@ The following status reflects the synthetic live remote test and current failure
 1. [x] Run a real public-GitHub verification snapshot through completed CI, authenticated `sync-verify`, and `sync-accept` in an isolated local clone. The test confirmed the exact candidate tree, one-parent snapshot, preserved custom-only feature, upstream-only improvement, and baseline/provenance advancement.
 2. [x] Add failure-injection coverage for candidate tampering after verification, baseline/provenance mismatch, rights-review acknowledgement tampering, failed verification, and interruption before provenance/baseline commit.
 3. [x] Cover core deletion/rename cases: upstream deletion of a locally modified file blocks; deletion of an unmodified upstream-owned file integrates; unambiguous upstream rename preserves a local edit; rename/rename and delete/rename conflicts block.
-4. [ ] Clean up temporary live-test and verification refs through the approval-gated workflow. Require a separate manual dispatch and exact expected SHA for each ref; no refs have been removed yet.
+4. [x] Clean up temporary live-test and verification refs through the approval-gated workflow. Each ref was deleted in its own manual dispatch with an exact expected SHA; both cleanup runs succeeded and both refs were verified absent.
 5. [x] Implement v1 declarative customization registry schema, exact-path validation, protection-mode checks, and read-only `usc customization-check` CLI.
 6. [x] Integrate registry entries into sync planning and acceptance; require evidence for every declared regression test ID against the exact candidate tree. USC validates evidence but does not execute project tests.
 7. [ ] Add JSON three-way structured merge with schema validation and conservative conflict behaviour.
