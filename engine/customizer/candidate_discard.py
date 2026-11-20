@@ -130,7 +130,16 @@ def discard_sync_candidate(
         # interrupted at that boundary, permit discard only for the exact
         # two-parent merge commit USC would have created, with no later edits.
         parents = _git(candidate, "rev-list", "--parents", "-n", "1", candidate_head).stdout.strip().split()
-        if parents != [candidate_head, customized, target] or merge_head.returncode == 0:
+        expected_merge = _git(repo, "merge-tree", "--write-tree", customized, target, check=False)
+        expected_tree = expected_merge.stdout.splitlines()[0].strip().lower() if expected_merge.stdout.splitlines() else ""
+        candidate_tree = _git(candidate, "rev-parse", "--verify", candidate_head + "^{tree}").stdout.strip().lower()
+        if (
+            parents != [candidate_head, customized, target]
+            or merge_head.returncode == 0
+            or expected_merge.returncode != 0
+            or not _SHA_RE.fullmatch(expected_tree)
+            or candidate_tree != expected_tree
+        ):
             raise SyncPlanError("Candidate HEAD is not the exact pre-provenance USC merge commit; refusing to discard.")
         if _git(candidate, "status", "--porcelain=v1", "--untracked-files=all").stdout:
             raise SyncPlanError("Pre-provenance candidate has uncommitted changes; inspect it manually instead of discarding.")
