@@ -136,8 +136,11 @@ def discard_sync_candidate(
         raise SyncPlanError("Candidate base/target ancestry does not match the recorded candidate report.")
 
     # Recheck the original immediately before the only destructive operation.
+    final_branch = _git(repo, "symbolic-ref", "--quiet", "--short", "HEAD", check=False)
     if (
-        _git(repo, "rev-parse", "--verify", "HEAD^{commit}").stdout.strip().lower() != customized
+        final_branch.returncode != 0
+        or final_branch.stdout.strip() != original_branch
+        or _git(repo, "rev-parse", "--verify", "HEAD^{commit}").stdout.strip().lower() != customized
         or _git(repo, "status", "--porcelain=v1", "--untracked-files=all").stdout
     ):
         raise SyncPlanError("Original repository changed immediately before discard; candidate was retained.")
