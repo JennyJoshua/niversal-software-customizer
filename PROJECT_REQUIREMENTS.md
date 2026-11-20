@@ -77,21 +77,19 @@ Build a reusable, configuration-driven framework that helps produce separately b
 - CI passes and provenance is recorded.
 
 
-## Customization registry v1 requirements — validation implemented
+## Customization registry v1 and registry-aware synchronization — implemented
 
 - Store a versioned declarative registry at `.usc/customizations.json`.
-- Require stable feature IDs, categories, purpose, protection mode, exact file paths, and explicit `custom_only` or `mixed` ownership.
-- Require test identifiers for `require_regression_tests`; require a human review note for `block_for_review`.
+- Validate stable feature IDs, categories, purpose, protection modes, exact existing paths, explicit `custom_only` or `mixed` ownership, test identifiers, and safe evidence references.
 - Reject stale/missing paths, symlinks, globs, absolute/traversal paths, reserved metadata paths, duplicate IDs/paths, inconsistent ownership, unsupported fields, and unsafe evidence URLs.
 - Provide the read-only CLI command `usc customization-check --path <project>` and an editor-facing JSON Schema.
-- A missing registry is `not_configured` and does not change existing project behaviour.
-- Registry v1 validates declarations only. It does not yet classify upstream changes, execute tests, enforce acceptance, or prove semantic preservation.
+- Feed valid registry entries into read-only sync planning; report affected customizations and required regression-test IDs.
+- Block invalid registries, unsafe protected-path changes, affected `block_for_review` entries, and unmapped overlapping changes.
+- Require passing evidence for every required test ID, bound to the exact candidate tree SHA; recompute requirements during acceptance.
+- A missing registry is `not_configured` and preserves previous behaviour.
+- USC validates supplied test evidence but does not execute project-specific tests or prove semantic preservation.
 
 ## Future selective-sync requirements
 
-- Correlate changed upstream paths with registered features and behaviours; model mixed-ownership files explicitly.
-- Treat unknown/stale mappings and unsupported selectors as unverified or blocked.
-- Select and require targeted regression tests against the exact candidate before acceptance.
-- Protect registry edits through review and provenance; never store secrets or live user data.
-- Add JSON three-way structured merging only after registry-aware planning and regression mapping are enforced; YAML support is later and restricted.
+- Add JSON three-way structured merging only after source-fidelity and conflict tests are designed; YAML support is later and restricted.
 - Structured merges must preserve unknown fields, reject ambiguous list/delete-edit conflicts, validate output, and remain inside the isolated candidate workflow.
