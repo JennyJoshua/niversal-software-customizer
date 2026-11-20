@@ -60,6 +60,8 @@ jobs:
           full_ref="refs/heads/$BRANCH_NAME"
           remote_url="https://github.com/$REPOSITORY.git"
           auth_header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git_dir="$RUNNER_TEMP/usc-cleanup.git"
+          git init --bare "$git_dir"
 
           commit_json="$(gh api "repos/$REPOSITORY/git/commits/$EXPECTED_SHA")"
           tree_sha="$(jq -r '.tree.sha // empty' <<< "$commit_json")"
@@ -82,7 +84,7 @@ jobs:
             exit 1
           fi
 
-          remote_line="$(GIT_TERMINAL_PROMPT=0 git -c http.extraheader="$auth_header" ls-remote --heads "$remote_url" "$full_ref")"
+          remote_line="$(GIT_TERMINAL_PROMPT=0 git -C "$git_dir" -c http.extraheader="$auth_header" ls-remote --heads "$remote_url" "$full_ref")"
           remote_sha="${remote_line%%$'\t'*}"
           if [[ "$remote_sha" != "$EXPECTED_SHA" ]]; then
             echo "::error::Remote ref is missing or no longer points to expected_sha; refusing cleanup."
@@ -93,10 +95,10 @@ jobs:
           echo "Snapshot commit: $EXPECTED_SHA"
           echo "Deleting only this ref with an expected-SHA lease."
 
-          GIT_TERMINAL_PROMPT=0 git -c http.extraheader="$auth_header" -c core.hooksPath=/dev/null \
+          GIT_TERMINAL_PROMPT=0 git -C "$git_dir" -c http.extraheader="$auth_header" -c core.hooksPath=/dev/null \
             push --force-with-lease="$full_ref:$EXPECTED_SHA" "$remote_url" ":$full_ref"
 
-          remaining="$(GIT_TERMINAL_PROMPT=0 git -c http.extraheader="$auth_header" ls-remote --heads "$remote_url" "$full_ref")"
+          remaining="$(GIT_TERMINAL_PROMPT=0 git -C "$git_dir" -c http.extraheader="$auth_header" ls-remote --heads "$remote_url" "$full_ref")"
           if [[ -n "$remaining" ]]; then
             echo "::error::The verification ref still exists after the delete attempt."
             exit 1
