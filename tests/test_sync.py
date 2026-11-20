@@ -1423,3 +1423,49 @@ def test_recovery_does_not_fast_forward_after_concurrent_original_commit(tmp_pat
     assert (repo / "concurrent.txt").read_text(encoding="utf-8") == "concurrent user change\\n"
     assert not (repo / "upstream.txt").exists()
     assert workspace.is_dir()
+
+
+def test_acceptance_interrupted_after_baseline_write_can_be_discarded(tmp_path, monkeypatch):
+    import json
+    from customizer import acceptance
+    from customizer.candidate_discard import discard_sync_candidate
+    from customizer.verification import create_sync_verification
+
+    repo, candidate, candidate_path, workspace = _make_registry_candidate(tmp_path)
+    original_head = git(repo, "rev-parse", "HEAD")
+    evidence_path = tmp_path / "evidence.json"
+    evidence_path.write_text(json.dumps(_registry_verification_evidence(candidate, workspace)), encoding="utf-8")
+    verification = create_sync_verification(candidate_path, evidence_path)
+    verification_path = tmp_path / "verification-report.json"
+    verification_path.write_text(json.dumps(verification), encoding="utf-8")
+
+    original_write_text = Path.write_text
+    baseline_file = workspace / ".usc" / "upstream-baseline.json"
+
+    def interrupt_after_baseline_write(path, data, *args, **kwargs):
+        result = original_write_text(path, data, *args, **kwargs)
+        if Path(path) == baseline_file:
+            raise OSError("simulated interruption after baseline write")
+        return result
+
+    monkeypatch.setattr(Path, "write_text", interrupt_after_baseline_write)
+    with pytest.raises(OSError, match="simulated interruption after baseline write"):
+        acceptance.accept_sync_candidate(
+            repo, candidate_path, verification_path,
+            upstream_url="https://github.com/upstream/sample-project",
+            approved=True, evidence_reviewed=True,
+        )
+
+    provenance_file = workspace / ".usc" / "provenance" / ("sync-" + candidate["upstream_target_sha"] + ".json")
+    assert provenance_file.is_file()
+    assert baseline_file.is_file()
+    assert git(repo, "rev-parse", "HEAD") == original_head
+    assert not (repo / "upstream.txt").exists()
+
+    result = discard_sync_candidate(repo, candidate_path, approved=True)
+
+    assert result["candidate_state"] == "merge_committed_before_provenance"
+    assert result["candidate_workspace_removed"] is True
+    assert not workspace.exists()
+    assert git(repo, "rev-parse", "HEAD") == original_head
+    assert not (repo / "upstream.txt").exists()
