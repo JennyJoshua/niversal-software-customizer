@@ -9,10 +9,10 @@ description = "A safe, licence-aware framework for customizing eligible open-sou
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Project Maintainers" }]
-dependencies = []
+dependencies = ["jsonschema>=4.21,<5"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "jsonschema>=4.21,<5"]
+dev = ["pytest>=8.0"]
 
 [project.scripts]
 usc = "customizer.cli:main"
@@ -22,3 +22,6 @@ where = ["engine"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.setuptools.package-data]
+customizer = ["schemas/*.json"]

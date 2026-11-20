@@ -9,6 +9,7 @@ from pathlib import Path
 from .inspector import InspectionError, inspect_github_repository, inspect_repository
 from .licensing import LicenceScanError, scan_licence_evidence
 from .customizations import inspect_customization_registry
+from .configuration import validate_project_branding_configuration
 from .sync import SyncPlanError, create_sync_candidate, create_sync_plan, resolve_sync_base
 from .verification import create_sync_verification
 from .verification_snapshot import create_sync_verification_snapshot
@@ -41,6 +42,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     registry_parser.add_argument("--path", required=True, help="Existing customized project directory.")
     registry_parser.add_argument("--output", help="Write JSON report outside the project directory.")
+
+    config_parser = subparsers.add_parser(
+        "config-check", help="Validate project and branding configuration without changing or executing project files."
+    )
+    config_parser.add_argument("--path", required=True, help="Existing customized project directory.")
+    config_parser.add_argument("--project-config", required=True, help="Path to project.json configuration.")
+    config_parser.add_argument("--branding-config", required=True, help="Path to branding.json configuration.")
+    config_parser.add_argument("--output", help="Write JSON report outside the project directory.")
 
     sync_parser = subparsers.add_parser(
         "sync-plan", help="Create a read-only three-way upstream synchronization plan."
@@ -150,6 +159,14 @@ def main(argv: list[str] | None = None) -> int:
             source_root = Path(args.path).expanduser().resolve()
             report = inspect_customization_registry(source_root)
             _write_report(report, args.output, source_root)
+            if report.get("status") == "blocked":
+                return 2
+        elif args.command == "config-check":
+            source_root_arg = Path(args.path).expanduser()
+            report = validate_project_branding_configuration(
+                source_root_arg, args.project_config, args.branding_config,
+            )
+            _write_report(report, args.output, source_root_arg.resolve())
             if report.get("status") == "blocked":
                 return 2
         elif args.command == "sync-plan":
