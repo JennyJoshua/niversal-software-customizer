@@ -120,11 +120,34 @@ def discard_sync_candidate(
     if current_branch.returncode != 0 or current_branch.stdout.strip() != candidate_branch:
         raise SyncPlanError("Candidate branch identity changed; refusing to discard.")
     candidate_head = _git(candidate, "rev-parse", "--verify", "HEAD^{commit}").stdout.strip().lower()
-    if candidate_head != customized:
-        raise SyncPlanError("Candidate HEAD changed or was committed; refusing to discard.")
     merge_head = _git(candidate, "rev-parse", "--verify", "MERGE_HEAD^{commit}", check=False)
-    if merge_head.returncode != 0 or merge_head.stdout.strip().lower() != target:
-        raise SyncPlanError("Candidate is not in the expected uncommitted merge state; refusing to discard.")
+    candidate_state = "uncommitted_merge"
+    if candidate_head == customized:
+        if merge_head.returncode != 0 or merge_head.stdout.strip().lower() != target:
+            raise SyncPlanError("Candidate is not in the expected uncommitted merge state; refusing to discard.")
+    else:
+        # Acceptance commits the candidate merge before writing provenance. If
+        # interrupted at that boundary, permit discard only for the exact
+        # two-parent merge commit USC would have created, with no later edits.
+        parents = _git(candidate, "rev-list", "--parents", "-n", "1", candidate_head).stdout.strip().split()
+        if parents != [candidate_head, customized, target] or merge_head.returncode == 0:
+            raise SyncPlanError("Candidate HEAD is not the exact pre-provenance USC merge commit; refusing to discard.")
+        if _git(candidate, "status", "--porcelain=v1", "--untracked-files=all").stdout:
+            raise SyncPlanError("Pre-provenance candidate has uncommitted changes; inspect it manually instead of discarding.")
+        usc_dir = candidate / ".usc"
+        provenance_dir = usc_dir / "provenance"
+        provenance_path = provenance_dir / ("sync-" + target + ".json")
+        baseline_path = usc_dir / "upstream-baseline.json"
+        if usc_dir.is_symlink() or provenance_dir.is_symlink() or provenance_path.is_symlink() or provenance_path.exists():
+            raise SyncPlanError("Pre-provenance candidate contains unexpected provenance state; refusing to discard.")
+        baseline_in_parent = _git(candidate, "cat-file", "-e", customized + ":.usc/upstream-baseline.json", check=False).returncode == 0
+        if baseline_in_parent:
+            expected_baseline = _git(candidate, "show", customized + ":.usc/upstream-baseline.json").stdout
+            if baseline_path.is_symlink() or not baseline_path.is_file() or baseline_path.read_text(encoding="utf-8") != expected_baseline:
+                raise SyncPlanError("Pre-provenance candidate baseline differs from the customized parent; refusing to discard.")
+        elif baseline_path.exists() or baseline_path.is_symlink():
+            raise SyncPlanError("Pre-provenance candidate has an unexpected new baseline; refusing to discard.")
+        candidate_state = "merge_committed_before_provenance"
 
     origin = _git(candidate, "remote", "get-url", "origin").stdout.strip()
     origin_path = Path(origin).expanduser()
@@ -134,6 +157,16 @@ def discard_sync_candidate(
     actual_base = _git(candidate, "merge-base", customized, target).stdout.strip().lower()
     if actual_base != base:
         raise SyncPlanError("Candidate base/target ancestry does not match the recorded candidate report.")
+
+    # Recheck candidate identity immediately before removal.
+    final_candidate_head = _git(candidate, "rev-parse", "--verify", "HEAD^{commit}").stdout.strip().lower()
+    final_candidate_branch = _git(candidate, "symbolic-ref", "--quiet", "--short", "HEAD", check=False)
+    if final_candidate_head != candidate_head or final_candidate_branch.returncode != 0 or final_candidate_branch.stdout.strip() != candidate_branch:
+        raise SyncPlanError("Candidate identity changed immediately before discard; candidate was retained.")
+    if candidate_state == "merge_committed_before_provenance":
+        final_parents = _git(candidate, "rev-list", "--parents", "-n", "1", final_candidate_head).stdout.strip().split()
+        if final_parents != [final_candidate_head, customized, target] or _git(candidate, "status", "--porcelain=v1", "--untracked-files=all").stdout:
+            raise SyncPlanError("Pre-provenance candidate changed immediately before discard; candidate was retained.")
 
     # Recheck the original immediately before the only destructive operation.
     final_branch = _git(repo, "symbolic-ref", "--quiet", "--short", "HEAD", check=False)
@@ -158,6 +191,7 @@ def discard_sync_candidate(
         "original_branch": original_branch,
         "original_customized_sha": customized,
         "upstream_target_sha": target,
+        "candidate_state": candidate_state,
         "original_repository_updated": False,
         "candidate_workspace_removed": True,
         "note": "Only the validated USC candidate workspace was removed. The original customized repository was not modified.",
