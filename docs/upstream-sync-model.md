@@ -113,7 +113,7 @@ The candidate report is emitted by `sync-candidate --output ../candidate-report.
 
 The verifier re-checks candidate branch, original customized HEAD, upstream MERGE_HEAD, unresolved conflicts, unstaged/untracked changes, and exact tree SHA. It also requires a passing result with a non-empty evidence reference for every registry-required test ID and records the required/verified ID sets. Stale or modified candidates and failed or incomplete test evidence are blocked. It never runs source scripts or tests.
 
-**Trust limitation:** evidence is reviewer-supplied JSON. The verifier checks its structure and binds it to the candidate tree, but does not independently authenticate the CI provider, log URLs, reviewer identity, or test execution. The report explicitly sets `evidence_authenticated=false`. A trusted CI evidence policy is still required before automatic acceptance.
+**Trust limitation:** reviewer-supplied JSON remains unauthenticated unless the authenticated GitHub Actions mode is used. Authenticated mode independently checks the trusted repository, completed successful run, workflow identity and pinned workflow blob, snapshot commit/parent/tree, and successful jobs. Neither mode executes project tests or independently proves that the supplied test command was appropriate.
 
 ## Current implementation: explicit acceptance and baseline advancement
 
@@ -167,9 +167,7 @@ Whole-file ignore/exclude rules remain prohibited as the primary protection mech
 
 The current implementation still uses Git's ordinary three-way merge and does not perform format-aware merges. A later adapter may support format-aware three-way merges for structured configuration files. Implement JSON first, then a deliberately limited YAML subset only after parser and round-trip behaviour is proven. Each merge must:
 
-### Structured merge
-
-A later adapter may support format-aware three-way merges for structured configuration files. Implement JSON first, then a deliberately limited YAML subset only after parser and round-trip behaviour is proven. Each merge must:
+Each merge must:
 - Parse base, upstream, and customized versions independently and reject invalid or ambiguous input.
 - Merge only explicitly supported object/key structures using the three-way base.
 - Treat conflicting scalar edits, delete-versus-edit, duplicate keys, unsupported YAML features, and ambiguous list edits as conflicts.
@@ -197,7 +195,7 @@ The synthetic public-GitHub end-to-end fixture completed successfully:
 - Customized fixture commit: `7dfc827e516fc5dbcc207f3871460581623f88f0`
 - Upstream target: `bf5199c67ec6797baa54ba8a3b12671f1ff25ff5`
 - Authenticated CI push run: https://github.com/JennyJoshua/universal-software-customizer/actions/runs/44633531926
-- Follow-on acceptance workflow: https://github.com/JennyJoshua/niversal-software-customizer/actions/runs/44633580230
+- Follow-on acceptance workflow: https://github.com/JennyJoshua/universal-software-customizer/actions/runs/44633580230
 
 The test recreated the candidate from the fixture's public GitHub refs, confirmed its tree exactly matched the published snapshot, authenticated the completed CI run, and accepted the candidate only in a disposable local clone. It verified that the custom-only feature remained intact, the upstream-only improvement was included, and baseline/provenance advanced to the selected upstream target.
 
