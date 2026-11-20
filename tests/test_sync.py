@@ -966,6 +966,98 @@ def test_registry_acceptance_succeeds_only_with_exact_required_test_evidence(tmp
     assert (repo / "feature.py").read_text(encoding="utf-8") == "upstream feature update\n"
 
 
+def test_sync_discard_requires_explicit_approval(tmp_path):
+    from customizer.candidate_discard import discard_sync_candidate
+
+    repo, candidate, candidate_path, workspace = _make_registry_candidate(tmp_path)
+    original_head = git(repo, "rev-parse", "HEAD")
+
+    with pytest.raises(SyncPlanError, match="requires explicit --approve"):
+        discard_sync_candidate(repo, candidate_path)
+
+    assert workspace.is_dir()
+    assert git(repo, "rev-parse", "HEAD") == original_head
+
+
+def test_sync_discard_removes_only_validated_candidate(tmp_path):
+    from customizer.candidate_discard import discard_sync_candidate
+
+    repo, candidate, candidate_path, workspace = _make_registry_candidate(tmp_path)
+    original_head = git(repo, "rev-parse", "HEAD")
+    original_feature = (repo / "feature.py").read_text(encoding="utf-8")
+
+    result = discard_sync_candidate(repo, candidate_path, approved=True)
+
+    assert result["status"] == "discarded"
+    assert result["candidate_workspace_removed"] is True
+    assert not workspace.exists()
+    assert git(repo, "rev-parse", "HEAD") == original_head
+    assert (repo / "feature.py").read_text(encoding="utf-8") == original_feature
+    assert result["original_repository_updated"] is False
+
+
+def test_sync_discard_rejects_candidate_path_symlink(tmp_path):
+    import json
+    from customizer.candidate_discard import discard_sync_candidate
+
+    repo, candidate, candidate_path, workspace = _make_registry_candidate(tmp_path)
+    link = tmp_path / "candidate-link"
+    link.symlink_to(workspace, target_is_directory=True)
+    report = json.loads(candidate_path.read_text(encoding="utf-8"))
+    report["candidate_path"] = str(link)
+    candidate_path.write_text(json.dumps(report), encoding="utf-8")
+
+    with pytest.raises(SyncPlanError, match="symlink components"):
+        discard_sync_candidate(repo, candidate_path, approved=True)
+
+    assert workspace.is_dir()
+
+
+def test_sync_discard_rejects_candidate_with_changed_head(tmp_path):
+    from customizer.candidate_discard import discard_sync_candidate
+
+    repo, candidate, candidate_path, workspace = _make_registry_candidate(tmp_path)
+    git(workspace, "-c", "user.name=Unexpected", "-c", "user.email=unexpected@example.invalid",
+        "commit", "--no-edit", "-m", "unexpected candidate commit")
+
+    with pytest.raises(SyncPlanError, match="Candidate HEAD changed or was committed"):
+        discard_sync_candidate(repo, candidate_path, approved=True)
+
+    assert workspace.is_dir()
+
+
+def test_sync_discard_rejects_candidate_with_wrong_origin(tmp_path):
+    from customizer.candidate_discard import discard_sync_candidate
+
+    repo, candidate, candidate_path, workspace = _make_registry_candidate(tmp_path)
+    other_origin = tmp_path / "other-origin"
+    other_origin.mkdir()
+    other_repo, _ = init_repo(other_origin)
+    git(workspace, "remote", "set-url", "origin", str(other_repo))
+
+    with pytest.raises(SyncPlanError, match="origin does not identify"):
+        discard_sync_candidate(repo, candidate_path, approved=True)
+
+    assert workspace.is_dir()
+
+
+def test_sync_discard_rejects_symlinked_parent_directory(tmp_path):
+    import json
+    from customizer.candidate_discard import discard_sync_candidate
+
+    repo, candidate, candidate_path, workspace = _make_registry_candidate(tmp_path)
+    alias = tmp_path / "alias"
+    alias.symlink_to(tmp_path, target_is_directory=True)
+    report = json.loads(candidate_path.read_text(encoding="utf-8"))
+    report["candidate_path"] = str(alias / workspace.name)
+    candidate_path.write_text(json.dumps(report), encoding="utf-8")
+
+    with pytest.raises(SyncPlanError, match="symlink components"):
+        discard_sync_candidate(repo, candidate_path, approved=True)
+
+    assert workspace.is_dir()
+
+
 def test_recovery_rejects_candidate_report_with_forged_branch_identity(tmp_path):
     import json
     from customizer.acceptance import recover_sync_acceptance
