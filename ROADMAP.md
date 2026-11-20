@@ -36,7 +36,7 @@
 - [x] Add explicit recovery for interruption after candidate provenance/baseline commit and before original fast-forward, with committed-record integrity checks.
 - [x] Add deletion and rename-with-local-edit conflict tests.
 - [x] Add guarded candidate discard for the uncommitted merge state and the exact pre-provenance merge commit; verify the original repository remains unchanged.
-- [ ] Expand failure-injection coverage for partial provenance writes and additional acceptance/recovery races.
+- [x] Expand failure-injection coverage for partial provenance writes and additional acceptance/recovery races (PRs #35 and #36 cover concurrent recovery fast-forward rejection and interruption after the baseline write; the earlier provenance-write interruption test remains covered).
 
 ## Phase 4 — Configuration and branding planning
 
