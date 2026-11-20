@@ -90,9 +90,9 @@ The following status reflects the synthetic live remote test and current failure
 
 - Snapshot commit: `04f4f14b01be8be97bf361490c7167bc3ec0722c`
 - Completed authenticated CI push run: https://github.com/JennyJoshua/universal-software-customizer/actions/runs/44633531926
-- Follow-on live acceptance workflow: https://github.com/JennyJoshua/niversal-software-customizer/actions/runs/44633580230
-- Failure-matrix PR #21: https://github.com/JennyJoshua/niversal-software-customizer/pull/21
-- Rights/deletion PR #22: https://github.com/JennyJoshua/niversal-software-customizer/pull/22
+- Follow-on live acceptance workflow: https://github.com/JennyJoshua/universal-software-customizer/actions/runs/44633580230
+- Failure-matrix PR #21: https://github.com/JennyJoshua/universal-software-customizer/pull/21
+- Rights/deletion PR #22: https://github.com/JennyJoshua/universal-software-customizer/pull/22
 
 The live fixture uses synthetic files in this repository and accepts only inside a temporary local clone. No product remote branch was pushed. This proves the remote evidence-to-acceptance mechanics for the tested scenario, not semantic compatibility for arbitrary applications.
 
