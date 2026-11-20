@@ -163,7 +163,7 @@ When a candidate cannot be accepted, or recovery refuses because provenance and 
 usc sync-discard --path ./customized-repository --candidate-report ../candidate-report.json --approve
 ```
 
-Discard requires explicit approval and validates the candidate report, original repository identity and clean state, candidate branch/HEAD, expected merge state, local origin, and base/target ancestry. It removes only the exact candidate workspace; it does not modify the original customized repository or delete remote verification refs. Review the discard report and retain it with the project records.
+Discard requires explicit approval and validates the candidate report, original repository identity and clean state, candidate branch/HEAD, local origin, and base/target ancestry. It supports either the original uncommitted merge state or the exact two-parent merge commit created immediately before provenance writing. For the committed state, it recomputes the expected Git merge tree, requires the exact customized/upstream parent order, a clean worktree, no new target provenance, and an unchanged pre-existing baseline. It removes only the exact candidate workspace; it does not modify the original customized repository or delete remote verification refs. Altered or dirty committed candidates are retained for manual inspection. Review the discard report and retain it with the project records.
 
 
 ## Registry-aware selective synchronization — implemented
