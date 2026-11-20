@@ -1048,6 +1048,21 @@ def test_recovery_rechecks_original_branch_after_fetch(tmp_path, monkeypatch):
     original_head = git(repo, "rev-parse", "HEAD")
     original_branch = git(repo, "branch", "--show-current")
     original_git = acceptance._git
+
+    def interrupt_before_original_fetch(path, *args, **kwargs):
+        if Path(path).resolve() == repo.resolve() and "fetch" in args:
+            raise SyncPlanError("simulated interruption before original fast-forward")
+        return original_git(path, *args, **kwargs)
+
+    monkeypatch.setattr(acceptance, "_git", interrupt_before_original_fetch)
+    with pytest.raises(SyncPlanError, match="simulated interruption"):
+        acceptance.accept_sync_candidate(
+            repo, candidate_path, verification_path,
+            upstream_url="https://github.com/upstream/sample-project",
+            approved=True, evidence_reviewed=True,
+        )
+    monkeypatch.setattr(acceptance, "_git", original_git)
+
     switched = False
 
     def switch_branch_after_fetch(path, *args, **kwargs):
