@@ -1017,7 +1017,7 @@ def test_sync_discard_rejects_candidate_with_changed_head(tmp_path):
     from customizer.candidate_discard import discard_sync_candidate
 
     repo, candidate, candidate_path, workspace = _make_registry_candidate(tmp_path)
-    (workspace / "unexpected.txt").write_text("unexpected candidate change\\n", encoding="utf-8")
+    (workspace / "unexpected.txt").write_text("unexpected candidate change\n", encoding="utf-8")
     git(workspace, "add", "unexpected.txt")
     git(workspace, "-c", "user.name=Unexpected", "-c", "user.email=unexpected@example.invalid",
         "commit", "--no-edit", "-m", "unexpected candidate commit")
@@ -1329,7 +1329,7 @@ def test_acceptance_does_not_fast_forward_after_concurrent_original_commit(tmp_p
     def advance_original_before_fast_forward(path, *args, **kwargs):
         nonlocal concurrent_head, injected
         if Path(path).resolve() == repo.resolve() and args and args[0] == "merge" and not injected:
-            (repo / "concurrent.txt").write_text("concurrent user change\\n", encoding="utf-8")
+            (repo / "concurrent.txt").write_text("concurrent user change\n", encoding="utf-8")
             git(repo, "add", "concurrent.txt")
             git(repo, "commit", "-m", "concurrent original-repository update")
             concurrent_head = git(repo, "rev-parse", "HEAD")
@@ -1348,8 +1348,8 @@ def test_acceptance_does_not_fast_forward_after_concurrent_original_commit(tmp_p
     assert git(repo, "branch", "--show-current") == original_branch
     assert git(repo, "rev-parse", "HEAD") == concurrent_head
     assert concurrent_head != original_head
-    assert (repo / "custom.txt").read_text(encoding="utf-8") == "custom work\\n"
-    assert (repo / "concurrent.txt").read_text(encoding="utf-8") == "concurrent user change\\n"
+    assert (repo / "custom.txt").read_text(encoding="utf-8") == "custom work\n"
+    assert (repo / "concurrent.txt").read_text(encoding="utf-8") == "concurrent user change\n"
     assert not (repo / "upstream.txt").exists()
     assert not (repo / ".usc" / "upstream-baseline.json").exists()
     assert workspace.is_dir()
