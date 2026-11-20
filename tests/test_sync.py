@@ -1037,3 +1037,36 @@ def test_recovery_rejects_candidate_with_wrong_origin(tmp_path, monkeypatch):
 
     assert git(repo, "rev-parse", "HEAD") == original_head
     assert not (repo / "upstream.txt").exists()
+
+
+def test_recovery_rechecks_original_branch_after_fetch(tmp_path, monkeypatch):
+    import customizer.acceptance as acceptance
+    from customizer.acceptance import recover_sync_acceptance
+    from customizer.sync import SyncPlanError
+
+    repo, _, _, workspace, _, candidate_path, verification_path = _make_verified_candidate(tmp_path)
+    original_head = git(repo, "rev-parse", "HEAD")
+    original_branch = git(repo, "branch", "--show-current")
+    original_git = acceptance._git
+    switched = False
+
+    def switch_branch_after_fetch(path, *args, **kwargs):
+        nonlocal switched
+        result = original_git(path, *args, **kwargs)
+        if Path(path).resolve() == repo.resolve() and "fetch" in args and not switched:
+            git(repo, "branch", "recovery-other", original_head)
+            git(repo, "checkout", "recovery-other")
+            switched = True
+        return result
+
+    monkeypatch.setattr(acceptance, "_git", switch_branch_after_fetch)
+    with pytest.raises(SyncPlanError, match="branch or HEAD changed during recovery"):
+        recover_sync_acceptance(repo, candidate_path, approved=True)
+
+    assert switched
+    assert git(repo, "rev-parse", "HEAD") == original_head
+    assert git(repo, "branch", "--show-current") == "recovery-other"
+    assert (repo / "custom.txt").read_text(encoding="utf-8") == "custom work\\n"
+    assert not (repo / "upstream.txt").exists()
+    assert workspace.is_dir()
+    assert original_branch != "recovery-other"
