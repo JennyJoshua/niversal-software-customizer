@@ -166,8 +166,6 @@ Whole-file ignore/exclude rules remain prohibited as the primary protection mech
 ## Structured-file merge — future specification
 
 The current implementation still uses Git's ordinary three-way merge and does not perform format-aware merges. A later adapter may support format-aware three-way merges for structured configuration files. Implement JSON first, then a deliberately limited YAML subset only after parser and round-trip behaviour is proven. Each merge must:
-
-Each merge must:
 - Parse base, upstream, and customized versions independently and reject invalid or ambiguous input.
 - Merge only explicitly supported object/key structures using the three-way base.
 - Treat conflicting scalar edits, delete-versus-edit, duplicate keys, unsupported YAML features, and ambiguous list edits as conflicts.
