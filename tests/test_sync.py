@@ -1044,7 +1044,7 @@ def test_sync_discard_rejects_symlinked_parent_directory(tmp_path):
     from customizer.candidate_discard import discard_sync_candidate
 
     repo, candidate, candidate_path, workspace = _make_registry_candidate(tmp_path)
-    alias = tmp_path.parent / f"{tmp_path.name}-alias"
+    alias = tmp_path / "alias"
     alias.symlink_to(tmp_path, target_is_directory=True)
     report = json.loads(candidate_path.read_text(encoding="utf-8"))
     report["candidate_path"] = str(alias / workspace.name)
