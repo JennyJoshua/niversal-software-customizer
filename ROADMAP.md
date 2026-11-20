@@ -27,7 +27,8 @@
 - [x] Require timezone-aware verification timestamps, reviewer identity, passing test entries, and evidence references.
 - [x] Authenticate CI run metadata and pin the workflow file to a trusted blob SHA.
 - [x] Create an exact-tree verification snapshot locally without changing the original product branch or candidate merge state.
-- [x] Validate a published snapshot through authenticated verification and acceptance end-to-end using synthetic GitHub fixtures.\n- [ ] Clean up retained temporary verification/test refs; the connected GitHub actions currently do not expose a safe delete-ref operation.
+- [x] Validate a published snapshot through authenticated verification and acceptance end-to-end using synthetic GitHub fixtures.
+- [ ] Clean up retained temporary verification/test refs; the connected GitHub actions currently do not expose a safe delete-ref operation.
 - [x] Resolve the stored upstream baseline by default after validating committed baseline/provenance identity and ancestry; retain explicit SHA overrides.
 - [x] Add explicit candidate acceptance with original-HEAD/branch/clean-tree rechecks and fast-forward-only update.
 - [x] Advance the stored upstream baseline only with the accepted branch update.
