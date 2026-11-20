@@ -20,6 +20,15 @@ usc inspect --repo-url https://github.com/OWNER/REPOSITORY --revision v1.2.3
 
 A branch name, tag, or full commit SHA may be supplied. The report records the resolved commit SHA. Remote inspection is limited to public HTTPS GitHub repositories.
 
+## Detect adapter candidates and create a read-only customization plan
+
+```bash
+usc adapter-detect --path ./path-to-source
+usc customize-plan --path ./path-to-source --project-config ./configuration/project.json --branding-config ./configuration/branding.json --output ../customization-plan.json
+```
+
+Adapter detection uses static manifest and file metadata only. Candidate names are heuristic suggestions and are explicitly marked `detected_not_implemented` until a real adapter is built and tested. The dry-run validates configuration, reports detected candidates and requested branding fields, and refuses to invent file edits for an unavailable adapter. It never writes source files, runs project code, or changes Git/USC synchronization metadata. A `adapter_not_implemented` result means planning is safe but no transformation can yet be applied.
+
 ## Collect licence and third-party rights evidence
 
 ```bash
