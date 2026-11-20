@@ -1384,7 +1384,7 @@ def test_recovery_does_not_fast_forward_after_concurrent_original_commit(tmp_pat
     original_git = acceptance._git
 
     def interrupt_before_acceptance_fetch(path, *args, **kwargs):
-        if Path(path).resolve() == repo.resolve() and args and args[0] == "fetch":
+        if Path(path).resolve() == repo.resolve() and "fetch" in args:
             raise SyncPlanError("simulated interruption before original fast-forward")
         return original_git(path, *args, **kwargs)
 
