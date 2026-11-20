@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
@@ -9,6 +10,19 @@ from typing import Any
 
 from . import __version__
 from .sync import SyncPlanError, _assert_no_custom_git_drivers, _git, create_sync_plan
+
+_SHA_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$", re.IGNORECASE)
+
+
+def _path_has_symlink_component(path: Path) -> bool:
+    absolute = path.absolute()
+    current = Path(absolute.anchor)
+    for part in absolute.parts[1:]:
+        current = current / part
+        if current.is_symlink():
+            return True
+    return False
+
 
 
 def accept_sync_candidate(
@@ -215,21 +229,46 @@ def recover_sync_acceptance(repository: str | Path, candidate_report_path: str |
     """Finish an interrupted fast-forward after the candidate provenance commit exists."""
     if not approved:
         raise SyncPlanError("Acceptance recovery requires explicit --approve confirmation.")
-    repo = Path(repository).expanduser().resolve()
+    repo_arg = Path(repository).expanduser()
+    report_arg = Path(candidate_report_path).expanduser()
+    if _path_has_symlink_component(repo_arg) or _path_has_symlink_component(report_arg):
+        raise SyncPlanError("Original repository and candidate report paths must not contain symlink components.")
+    repo = repo_arg.resolve(strict=True)
     try:
-        report = json.loads(Path(candidate_report_path).expanduser().read_text(encoding="utf-8"))
+        report = json.loads(report_arg.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise SyncPlanError(f"Candidate report is unreadable: {exc}") from exc
-    if not isinstance(report, dict) or report.get("operation") != "upstream_sync_candidate":
-        raise SyncPlanError("A valid upstream candidate report is required.")
+    if (
+        not isinstance(report, dict)
+        or report.get("schema_version") != "1.0"
+        or report.get("operation") != "upstream_sync_candidate"
+        or report.get("status") != "candidate_ready_for_review"
+        or report.get("integration_committed") is not False
+        or report.get("original_repository_unchanged") is not True
+    ):
+        raise SyncPlanError("A valid, isolated, unaccepted version 1.0 candidate report is required.")
     candidate_value = report.get("candidate_path")
     if not isinstance(candidate_value, str) or not candidate_value.strip():
         raise SyncPlanError("Candidate report has no candidate workspace.")
-    candidate = Path(candidate_value).expanduser().resolve()
-    if not repo.is_dir() or not (repo / ".git").exists() or not candidate.is_dir() or not (candidate / ".git").exists():
-        raise SyncPlanError("Original and candidate repositories must both exist.")
+    candidate_arg = Path(candidate_value).expanduser()
+    if (
+        not candidate_arg.is_absolute()
+        or ".." in candidate_arg.parts
+        or _path_has_symlink_component(candidate_arg)
+    ):
+        raise SyncPlanError("Candidate workspace must be an absolute normalized path without symlink components.")
+    candidate = candidate_arg.resolve(strict=True)
+    if (
+        not repo.is_dir() or (repo / ".git").is_symlink() or not (repo / ".git").exists()
+        or not candidate.is_dir() or (candidate / ".git").is_symlink() or not (candidate / ".git").exists()
+    ):
+        raise SyncPlanError("Original and candidate repositories must both exist as non-symlink Git workspaces.")
     if candidate == repo or repo in candidate.parents or candidate in repo.parents:
         raise SyncPlanError("Original and candidate repositories must be separate directories.")
+    if _git(repo, "rev-parse", "--show-toplevel").stdout.strip() != str(repo):
+        raise SyncPlanError("Supplied original path is not the Git working-tree root.")
+    if _git(candidate, "rev-parse", "--show-toplevel").stdout.strip() != str(candidate):
+        raise SyncPlanError("Candidate path is not the Git working-tree root.")
     _assert_no_custom_git_drivers(repo)
     _assert_no_custom_git_drivers(candidate)
     target = str(report.get("upstream_target_sha", "")).lower()
@@ -237,10 +276,22 @@ def recover_sync_acceptance(repository: str | Path, candidate_report_path: str |
     customized = str(report.get("customized_sha", "")).lower()
     original_branch = report.get("original_branch")
     candidate_branch = report.get("candidate_branch")
-    if not all((target, base, customized, original_branch, candidate_branch)):
-        raise SyncPlanError("Candidate report is missing required branch or SHA identities.")
+    if not all(_SHA_RE.fullmatch(value) for value in (target, base, customized)):
+        raise SyncPlanError("Candidate report contains invalid full commit SHAs.")
+    if (
+        not isinstance(original_branch, str) or not original_branch
+        or not isinstance(candidate_branch, str)
+        or candidate_branch != f"usc-sync-candidate-{target[:12]}"
+    ):
+        raise SyncPlanError("Candidate report contains invalid original/candidate branch identities.")
     if _git(candidate, "branch", "--show-current").stdout.strip() != candidate_branch:
         raise SyncPlanError("Candidate branch changed; recovery is blocked.")
+    origin = _git(candidate, "remote", "get-url", "origin").stdout.strip()
+    origin_path = Path(origin).expanduser()
+    if not origin or not origin_path.is_absolute() or _path_has_symlink_component(origin_path):
+        raise SyncPlanError("Candidate origin must be a local, absolute path to the original repository.")
+    if origin_path.resolve(strict=True) != repo:
+        raise SyncPlanError("Candidate origin does not identify the supplied original repository.")
     if _git(candidate, "status", "--porcelain=v1", "--untracked-files=all").stdout:
         raise SyncPlanError("Candidate has uncommitted changes; recovery will not trust modified provenance.")
     usc = candidate / ".usc"
@@ -256,7 +307,21 @@ def recover_sync_acceptance(repository: str | Path, candidate_report_path: str |
         provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise SyncPlanError(f"Candidate provenance or baseline is unreadable: {exc}") from exc
-    if baseline.get("upstream_repository_url") != provenance.get("upstream_repository_url"):
+    if (
+        not isinstance(baseline, dict) or baseline.get("schema_version") != "1.0"
+        or not isinstance(provenance, dict) or provenance.get("schema_version") != "1.0"
+        or provenance.get("operation") != "accepted_upstream_sync"
+    ):
+        raise SyncPlanError("Candidate baseline/provenance records have unsupported schemas or operations.")
+    upstream_url = provenance.get("upstream_repository_url")
+    parsed_upstream = urlparse(upstream_url) if isinstance(upstream_url, str) else None
+    if (
+        parsed_upstream is None or parsed_upstream.scheme != "https"
+        or parsed_upstream.netloc.lower() != "github.com"
+        or len([part for part in parsed_upstream.path.strip("/").split("/") if part]) != 2
+    ):
+        raise SyncPlanError("Candidate provenance has an invalid upstream repository URL.")
+    if baseline.get("upstream_repository_url") != upstream_url:
         raise SyncPlanError("Candidate baseline and provenance upstream URLs do not match.")
     if str(baseline.get("last_imported_upstream_sha", "")).lower() != target:
         raise SyncPlanError("Candidate baseline does not point to the selected upstream target.")
@@ -267,7 +332,10 @@ def recover_sync_acceptance(repository: str | Path, candidate_report_path: str |
     if provenance.get("candidate_branch") != candidate_branch or provenance.get("original_branch") != original_branch:
         raise SyncPlanError("Candidate provenance branch identities do not match the candidate report.")
     merge_sha = str(provenance.get("merge_commit_sha", "")).lower()
-    if not merge_sha or str(baseline.get("last_customized_merge_commit_sha", "")).lower() != merge_sha:
+    candidate_tree_sha = str(provenance.get("candidate_tree_sha", "")).lower()
+    if not _SHA_RE.fullmatch(merge_sha) or not _SHA_RE.fullmatch(candidate_tree_sha):
+        raise SyncPlanError("Candidate provenance contains invalid merge/tree SHA identities.")
+    if str(baseline.get("last_customized_merge_commit_sha", "")).lower() != merge_sha:
         raise SyncPlanError("Baseline and provenance merge commit identities do not match.")
     if baseline.get("provenance_path") != provenance_path.relative_to(candidate).as_posix():
         raise SyncPlanError("Baseline provenance path does not match the recorded provenance file.")
@@ -279,13 +347,23 @@ def recover_sync_acceptance(repository: str | Path, candidate_report_path: str |
     if len(tip_parents) != 2 or tip_parents[1].lower() != merge_sha:
         raise SyncPlanError("Candidate tip is not the expected provenance commit.")
     merge_tree = _git(candidate, "rev-parse", "--verify", f"{merge_sha}^{{tree}}").stdout.strip().lower()
-    if merge_tree != str(provenance.get("candidate_tree_sha", "")).lower():
+    if merge_tree != candidate_tree_sha:
         raise SyncPlanError("Provenance candidate tree does not match the upstream merge commit tree.")
     committed_baseline = json.loads(_git(candidate, "show", f"{final_tip}:.usc/upstream-baseline.json").stdout)
     committed_provenance = json.loads(_git(candidate, "show", f"{final_tip}:.usc/provenance/sync-{target}.json").stdout)
     if committed_baseline != baseline or committed_provenance != provenance:
         raise SyncPlanError("Candidate working provenance differs from the committed provenance/baseline records.")
 
+    candidate_head_now = _git(candidate, "rev-parse", "--verify", "HEAD^{commit}").stdout.strip().lower()
+    candidate_branch_now = _git(candidate, "symbolic-ref", "--quiet", "--short", "HEAD", check=False)
+    candidate_status_now = _git(candidate, "status", "--porcelain=v1", "--untracked-files=all").stdout
+    if (
+        candidate_head_now != final_tip
+        or candidate_branch_now.returncode != 0
+        or candidate_branch_now.stdout.strip() != candidate_branch
+        or candidate_status_now
+    ):
+        raise SyncPlanError("Candidate changed during recovery validation; recovery is blocked.")
     head = _git(repo, "rev-parse", "--verify", "HEAD^{commit}").stdout.strip().lower()
     status = _git(repo, "status", "--porcelain=v1", "--untracked-files=all").stdout
     branch = _git(repo, "symbolic-ref", "--quiet", "--short", "HEAD", check=False)
@@ -301,8 +379,13 @@ def recover_sync_acceptance(repository: str | Path, candidate_report_path: str |
     if _git(repo, "merge-base", head, target).stdout.strip().lower() != base:
         raise SyncPlanError("Original repository no longer has the expected upstream merge base.")
     _git(repo, "-c", "protocol.file.allow=always", "fetch", "--no-tags", "--no-recurse-submodules", "--", str(candidate), final_tip)
-    if _git(repo, "rev-parse", "--verify", "HEAD^{commit}").stdout.strip().lower() != customized:
-        raise SyncPlanError("Original HEAD changed during recovery; fast-forward was not attempted.")
+    branch_after_fetch = _git(repo, "symbolic-ref", "--quiet", "--short", "HEAD", check=False)
+    if (
+        branch_after_fetch.returncode != 0
+        or branch_after_fetch.stdout.strip() != original_branch
+        or _git(repo, "rev-parse", "--verify", "HEAD^{commit}").stdout.strip().lower() != customized
+    ):
+        raise SyncPlanError("Original branch or HEAD changed during recovery; fast-forward was not attempted.")
     if _git(repo, "status", "--porcelain=v1", "--untracked-files=all").stdout:
         raise SyncPlanError("Original working tree changed during recovery; fast-forward was not attempted.")
     _git(repo, "merge", "--ff-only", "--no-edit", final_tip)

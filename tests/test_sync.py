@@ -1056,3 +1056,124 @@ def test_sync_discard_rejects_symlinked_parent_directory(tmp_path):
         discard_sync_candidate(repo, candidate_path, approved=True)
 
     assert workspace.is_dir()
+
+
+def test_recovery_rejects_candidate_report_with_forged_branch_identity(tmp_path):
+    import json
+    from customizer.acceptance import recover_sync_acceptance
+    from customizer.sync import SyncPlanError
+
+    repo, _, _, workspace, _, candidate_path, _ = _make_verified_candidate(tmp_path)
+    report = json.loads(candidate_path.read_text(encoding="utf-8"))
+    report["candidate_branch"] = "main"
+    candidate_path.write_text(json.dumps(report), encoding="utf-8")
+    original_head = git(repo, "rev-parse", "HEAD")
+
+    with pytest.raises(SyncPlanError, match="invalid original/candidate branch identities"):
+        recover_sync_acceptance(repo, candidate_path, approved=True)
+
+    assert git(repo, "rev-parse", "HEAD") == original_head
+    assert workspace.is_dir()
+
+
+def test_recovery_rejects_symlinked_candidate_path_parent(tmp_path):
+    import json
+    from customizer.acceptance import recover_sync_acceptance
+    from customizer.sync import SyncPlanError
+
+    repo, _, _, workspace, _, candidate_path, _ = _make_verified_candidate(tmp_path)
+    alias = tmp_path / "candidate-alias"
+    alias.symlink_to(workspace.parent, target_is_directory=True)
+    report = json.loads(candidate_path.read_text(encoding="utf-8"))
+    report["candidate_path"] = str(alias / workspace.name)
+    candidate_path.write_text(json.dumps(report), encoding="utf-8")
+    original_head = git(repo, "rev-parse", "HEAD")
+
+    with pytest.raises(SyncPlanError, match="without symlink components"):
+        recover_sync_acceptance(repo, candidate_path, approved=True)
+
+    assert git(repo, "rev-parse", "HEAD") == original_head
+    assert workspace.is_dir()
+
+
+def test_recovery_rejects_candidate_with_wrong_origin(tmp_path, monkeypatch):
+    import customizer.acceptance as acceptance
+    from customizer.acceptance import recover_sync_acceptance
+    from customizer.sync import SyncPlanError
+
+    repo, _, _, workspace, _, candidate_path, verification_path = _make_verified_candidate(tmp_path)
+    original_head = git(repo, "rev-parse", "HEAD")
+    original_git = acceptance._git
+
+    def fail_fetch(path, *args, **kwargs):
+        if Path(path).resolve() == repo.resolve() and "fetch" in args:
+            raise SyncPlanError("simulated interruption before original fast-forward")
+        return original_git(path, *args, **kwargs)
+
+    monkeypatch.setattr(acceptance, "_git", fail_fetch)
+    with pytest.raises(SyncPlanError, match="simulated interruption"):
+        acceptance.accept_sync_candidate(
+            repo, candidate_path, verification_path,
+            upstream_url="https://github.com/upstream/sample-project",
+            approved=True, evidence_reviewed=True,
+        )
+    monkeypatch.setattr(acceptance, "_git", original_git)
+
+    other_origin = tmp_path / "other-origin"
+    other_origin.mkdir()
+    other_repo, _ = init_repo(other_origin)
+    git(workspace, "remote", "set-url", "origin", str(other_repo))
+
+    with pytest.raises(SyncPlanError, match="origin does not identify"):
+        recover_sync_acceptance(repo, candidate_path, approved=True)
+
+    assert git(repo, "rev-parse", "HEAD") == original_head
+    assert not (repo / "upstream.txt").exists()
+
+
+def test_recovery_rechecks_original_branch_after_fetch(tmp_path, monkeypatch):
+    import customizer.acceptance as acceptance
+    from customizer.acceptance import recover_sync_acceptance
+    from customizer.sync import SyncPlanError
+
+    repo, _, _, workspace, _, candidate_path, verification_path = _make_verified_candidate(tmp_path)
+    original_head = git(repo, "rev-parse", "HEAD")
+    original_branch = git(repo, "branch", "--show-current")
+    original_git = acceptance._git
+
+    def interrupt_before_original_fetch(path, *args, **kwargs):
+        if Path(path).resolve() == repo.resolve() and "fetch" in args:
+            raise SyncPlanError("simulated interruption before original fast-forward")
+        return original_git(path, *args, **kwargs)
+
+    monkeypatch.setattr(acceptance, "_git", interrupt_before_original_fetch)
+    with pytest.raises(SyncPlanError, match="simulated interruption"):
+        acceptance.accept_sync_candidate(
+            repo, candidate_path, verification_path,
+            upstream_url="https://github.com/upstream/sample-project",
+            approved=True, evidence_reviewed=True,
+        )
+    monkeypatch.setattr(acceptance, "_git", original_git)
+
+    switched = False
+
+    def switch_branch_after_fetch(path, *args, **kwargs):
+        nonlocal switched
+        result = original_git(path, *args, **kwargs)
+        if Path(path).resolve() == repo.resolve() and "fetch" in args and not switched:
+            git(repo, "branch", "recovery-other", original_head)
+            git(repo, "checkout", "recovery-other")
+            switched = True
+        return result
+
+    monkeypatch.setattr(acceptance, "_git", switch_branch_after_fetch)
+    with pytest.raises(SyncPlanError, match="branch or HEAD changed during recovery"):
+        recover_sync_acceptance(repo, candidate_path, approved=True)
+
+    assert switched
+    assert git(repo, "rev-parse", "HEAD") == original_head
+    assert git(repo, "branch", "--show-current") == "recovery-other"
+    assert (repo / "custom.txt").read_text(encoding="utf-8") == "custom work\n"
+    assert not (repo / "upstream.txt").exists()
+    assert workspace.is_dir()
+    assert original_branch != "recovery-other"

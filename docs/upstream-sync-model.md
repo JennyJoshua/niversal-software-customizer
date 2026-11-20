@@ -138,7 +138,7 @@ Acceptance:
 
 If a pre-update gate fails, the original branch and baseline remain unchanged. Acceptance does not run project scripts or tests. The baseline and provenance become part of the original branch only when the fast-forward succeeds.
 
-The verifier supports independently authenticated GitHub Actions evidence when supplied with the trusted repository, workflow ID/path/blob SHA, and exact-tree snapshot report. Reviewer-supplied evidence remains explicitly unauthenticated when authenticated mode is not used. Automated candidate discard and recovery before provenance/baseline commits remain outstanding.
+The verifier supports independently authenticated GitHub Actions evidence when supplied with the trusted repository, workflow ID/path/blob SHA, and exact-tree snapshot report. Reviewer-supplied evidence remains explicitly unauthenticated when authenticated mode is not used. USC provides guarded candidate discard for an unaccepted candidate; if interruption occurs before provenance and baseline are committed, recovery refuses and the candidate must be discarded and recreated.
 
 
 ## Recovery after an interrupted acceptance
@@ -150,9 +150,20 @@ usc sync-recover --path ./customized-repository \\
   --candidate-report ../candidate-report.json --approve
 \`\`\`
 
-Recovery checks that the candidate worktree is clean, the committed provenance/baseline files exactly match their checked-out contents, the baseline and provenance reference the same merge commit, and the customized/upstream merge parent order is correct. It then fast-forwards only if the original branch is still at the recorded customized SHA and clean. Repeating recovery after success returns \`already_applied\`.
+Recovery requires explicit approval and validates the versioned candidate report, absolute non-symlink workspace paths, separate Git working-tree roots, the expected USC candidate branch, and a local candidate origin that resolves to the supplied original repository. It checks full commit identities, provenance/baseline schemas and upstream URL, the merge commit's customized/upstream parent order, the provenance commit parent, the recorded candidate tree, and equality between committed and checked-out provenance/baseline files. It fast-forwards only if the original branch is still the recorded branch at the customized SHA with a clean worktree. Repeating recovery after success returns `already_applied`.
 
-If interruption happened before provenance and baseline were committed, recovery deliberately refuses; discard the candidate and create a fresh one. The original customized branch remains the authoritative copy.
+If interruption happened before provenance and baseline were committed, recovery deliberately refuses and does not advance the original branch; discard the candidate and create a fresh one. The original customized branch remains the authoritative copy.
+
+
+## Discarding an unaccepted candidate
+
+When a candidate cannot be accepted, or recovery refuses because provenance and baseline were not committed, discard only the validated USC-created candidate workspace:
+
+```bash
+usc sync-discard --path ./customized-repository --candidate-report ../candidate-report.json --approve
+```
+
+Discard requires explicit approval and validates the candidate report, original repository identity and clean state, candidate branch/HEAD, expected merge state, local origin, and base/target ancestry. It removes only the exact candidate workspace; it does not modify the original customized repository or delete remote verification refs. Review the discard report and retain it with the project records.
 
 
 ## Registry-aware selective synchronization — implemented
