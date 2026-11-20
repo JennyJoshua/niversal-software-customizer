@@ -1353,3 +1353,73 @@ def test_acceptance_does_not_fast_forward_after_concurrent_original_commit(tmp_p
     assert not (repo / "upstream.txt").exists()
     assert not (repo / ".usc" / "upstream-baseline.json").exists()
     assert workspace.is_dir()
+
+def test_recovery_does_not_fast_forward_after_concurrent_original_commit(tmp_path, monkeypatch):
+    import json
+    import customizer.acceptance as acceptance
+    from customizer.sync import create_sync_candidate
+    from customizer.verification import create_sync_verification
+
+    repo, base = init_repo(tmp_path)
+    target = commit_file(repo, "upstream.txt", "upstream update\\n", "upstream change")
+    git(repo, "branch", "upstream/test", target)
+    git(repo, "reset", "--hard", base)
+    commit_file(repo, "custom.txt", "custom work\\n", "custom change")
+    workspace = tmp_path / "candidate"
+    candidate = create_sync_candidate(repo, base, target, workspace, approved=True)
+    candidate_report = tmp_path / "candidate-report.json"
+    candidate_report.write_text(json.dumps(candidate), encoding="utf-8")
+    evidence = tmp_path / "evidence.json"
+    evidence.write_text(json.dumps({
+        "schema_version": "1.0", "verification_status": "passed",
+        "reviewer": "Reviewer", "verified_at": "2026-11-19T10:30:00+10:00",
+        "verification_source": "CI run 123", "candidate_tree_sha": git(workspace, "write-tree"),
+        "rights_reviewed": False,
+        "test_results": [{"name": "regression", "passed": True, "evidence_ref": "CI run 123"}]
+    }), encoding="utf-8")
+    verification = tmp_path / "verification.json"
+    verification.write_text(json.dumps(create_sync_verification(candidate_report, evidence)), encoding="utf-8")
+    original_head = git(repo, "rev-parse", "HEAD")
+    original_branch = git(repo, "branch", "--show-current")
+    original_git = acceptance._git
+
+    def interrupt_before_acceptance_fetch(path, *args, **kwargs):
+        if Path(path).resolve() == repo.resolve() and args and args[0] == "fetch":
+            raise SyncPlanError("simulated interruption before original fast-forward")
+        return original_git(path, *args, **kwargs)
+
+    monkeypatch.setattr(acceptance, "_git", interrupt_before_acceptance_fetch)
+    with pytest.raises(SyncPlanError, match="simulated interruption"):
+        acceptance.accept_sync_candidate(
+            repo, candidate_report, verification,
+            upstream_url="https://github.com/upstream/sample-project",
+            approved=True, evidence_reviewed=True,
+        )
+    assert git(repo, "rev-parse", "HEAD") == original_head
+    assert not (repo / "upstream.txt").exists()
+
+    injected = False
+    concurrent_head = None
+
+    def advance_original_before_recovery_fast_forward(path, *args, **kwargs):
+        nonlocal injected, concurrent_head
+        if Path(path).resolve() == repo.resolve() and args and args[0] == "merge" and not injected:
+            (repo / "concurrent.txt").write_text("concurrent user change\\n", encoding="utf-8")
+            git(repo, "add", "concurrent.txt")
+            git(repo, "commit", "-m", "concurrent original-repository update")
+            concurrent_head = git(repo, "rev-parse", "HEAD")
+            injected = True
+        return original_git(path, *args, **kwargs)
+
+    monkeypatch.setattr(acceptance, "_git", advance_original_before_recovery_fast_forward)
+    with pytest.raises(subprocess.CalledProcessError):
+        acceptance.recover_sync_acceptance(repo, candidate_report, approved=True)
+
+    assert injected
+    assert git(repo, "branch", "--show-current") == original_branch
+    assert git(repo, "rev-parse", "HEAD") == concurrent_head
+    assert concurrent_head != original_head
+    assert (repo / "custom.txt").read_text(encoding="utf-8") == "custom work\\n"
+    assert (repo / "concurrent.txt").read_text(encoding="utf-8") == "concurrent user change\\n"
+    assert not (repo / "upstream.txt").exists()
+    assert workspace.is_dir()
