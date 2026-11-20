@@ -40,7 +40,7 @@
 
 ## Phase 4 — Configuration and branding planning
 
-- [ ] Define versioned project and branding JSON schemas.
+- [x] Define versioned project and branding JSON schemas (PR #43); validate both Draft 2020-12 schema documents and example files, with negative-case coverage (PR #44).
 - [ ] Validate names, colors, URLs, assets, and safe paths.
 - [ ] Create adapter detection and deterministic dry-run plan interfaces.
 - [ ] Test invalid and unsafe configuration.
