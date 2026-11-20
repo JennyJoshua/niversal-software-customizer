@@ -1017,10 +1017,12 @@ def test_sync_discard_rejects_candidate_with_changed_head(tmp_path):
     from customizer.candidate_discard import discard_sync_candidate
 
     repo, candidate, candidate_path, workspace = _make_registry_candidate(tmp_path)
+    (workspace / "unexpected.txt").write_text("unexpected candidate change\\n", encoding="utf-8")
+    git(workspace, "add", "unexpected.txt")
     git(workspace, "-c", "user.name=Unexpected", "-c", "user.email=unexpected@example.invalid",
         "commit", "--no-edit", "-m", "unexpected candidate commit")
 
-    with pytest.raises(SyncPlanError, match="Candidate HEAD changed or was committed"):
+    with pytest.raises(SyncPlanError, match="exact pre-provenance USC merge commit"):
         discard_sync_candidate(repo, candidate_path, approved=True)
 
     assert workspace.is_dir()
