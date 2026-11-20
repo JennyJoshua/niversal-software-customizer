@@ -141,20 +141,29 @@ def discard_sync_candidate(
             or candidate_tree != expected_tree
         ):
             raise SyncPlanError("Candidate HEAD is not the exact pre-provenance USC merge commit; refusing to discard.")
-        if _git(candidate, "status", "--porcelain=v1", "--untracked-files=all").stdout:
-            raise SyncPlanError("Pre-provenance candidate has uncommitted changes; inspect it manually instead of discarding.")
         usc_dir = candidate / ".usc"
         provenance_dir = usc_dir / "provenance"
         provenance_path = provenance_dir / ("sync-" + target + ".json")
         baseline_path = usc_dir / "upstream-baseline.json"
-        if usc_dir.is_symlink() or provenance_dir.is_symlink() or provenance_path.is_symlink() or provenance_path.exists():
-            raise SyncPlanError("Pre-provenance candidate contains unexpected provenance state; refusing to discard.")
+        if (
+            usc_dir.is_symlink() or (usc_dir.exists() and not usc_dir.is_dir())
+            or provenance_dir.is_symlink() or (provenance_dir.exists() and not provenance_dir.is_dir())
+            or provenance_path.is_symlink() or (provenance_path.exists() and not provenance_path.is_file())
+            or baseline_path.is_symlink() or (baseline_path.exists() and not baseline_path.is_file())
+        ):
+            raise SyncPlanError("Pre-provenance candidate contains unsafe metadata paths; refusing to discard.")
+        allowed_metadata = {".usc/upstream-baseline.json", ".usc/provenance/sync-" + target + ".json"}
+        tracked_changes = _git(candidate, "diff", "--name-only", "-z", "HEAD").stdout.split("\\0")
+        untracked_changes = _git(candidate, "ls-files", "--others", "--exclude-standard", "-z").stdout.split("\\0")
+        changed_paths = {path for path in tracked_changes + untracked_changes if path}
+        if not changed_paths.issubset(allowed_metadata):
+            raise SyncPlanError("Pre-provenance candidate has changes outside generated provenance paths; inspect it manually instead of discarding.")
         baseline_in_parent = _git(candidate, "cat-file", "-e", customized + ":.usc/upstream-baseline.json", check=False).returncode == 0
-        if baseline_in_parent:
+        if baseline_in_parent and ".usc/upstream-baseline.json" not in changed_paths:
             expected_baseline = _git(candidate, "show", customized + ":.usc/upstream-baseline.json").stdout
-            if baseline_path.is_symlink() or not baseline_path.is_file() or baseline_path.read_text(encoding="utf-8") != expected_baseline:
+            if baseline_path.read_text(encoding="utf-8") != expected_baseline:
                 raise SyncPlanError("Pre-provenance candidate baseline differs from the customized parent; refusing to discard.")
-        elif baseline_path.exists() or baseline_path.is_symlink():
+        if not baseline_in_parent and baseline_path.exists() and ".usc/upstream-baseline.json" not in changed_paths:
             raise SyncPlanError("Pre-provenance candidate has an unexpected new baseline; refusing to discard.")
         candidate_state = "merge_committed_before_provenance"
 
@@ -174,7 +183,10 @@ def discard_sync_candidate(
         raise SyncPlanError("Candidate identity changed immediately before discard; candidate was retained.")
     if candidate_state == "merge_committed_before_provenance":
         final_parents = _git(candidate, "rev-list", "--parents", "-n", "1", final_candidate_head).stdout.strip().split()
-        if final_parents != [final_candidate_head, customized, target] or _git(candidate, "status", "--porcelain=v1", "--untracked-files=all").stdout:
+        final_tracked = _git(candidate, "diff", "--name-only", "-z", "HEAD").stdout.split("\\0")
+        final_untracked = _git(candidate, "ls-files", "--others", "--exclude-standard", "-z").stdout.split("\\0")
+        final_changed = {path for path in final_tracked + final_untracked if path}
+        if final_parents != [final_candidate_head, customized, target] or not final_changed.issubset(allowed_metadata):
             raise SyncPlanError("Pre-provenance candidate changed immediately before discard; candidate was retained.")
 
     # Recheck the original immediately before the only destructive operation.
