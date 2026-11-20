@@ -155,6 +155,8 @@ def validate_project_branding_configuration(
             brand.get("brand", {}).get("product_name")
             if isinstance(brand, dict) and isinstance(brand.get("brand"), dict) else None
         ),
+        "brand_fields": sorted(brand.get("brand", {}).keys()) if isinstance(brand, dict) and isinstance(brand.get("brand"), dict) else [],
+        "visual_fields": sorted(brand.get("visual", {}).keys()) if isinstance(brand, dict) and isinstance(brand.get("visual"), dict) else [],
         "assets": sorted(assets, key=lambda item: (item["field"], item["path"])),
         "errors": errors,
         "warnings": [],
