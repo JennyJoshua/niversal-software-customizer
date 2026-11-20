@@ -1081,7 +1081,7 @@ def test_recovery_rechecks_original_branch_after_fetch(tmp_path, monkeypatch):
     assert switched
     assert git(repo, "rev-parse", "HEAD") == original_head
     assert git(repo, "branch", "--show-current") == "recovery-other"
-    assert (repo / "custom.txt").read_text(encoding="utf-8") == "custom work\\n"
+    assert (repo / "custom.txt").read_text(encoding="utf-8") == "custom work\n"
     assert not (repo / "upstream.txt").exists()
     assert workspace.is_dir()
     assert original_branch != "recovery-other"
