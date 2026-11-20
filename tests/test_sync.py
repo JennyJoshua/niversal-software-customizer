@@ -1007,7 +1007,7 @@ def test_sync_discard_rejects_candidate_path_symlink(tmp_path):
     report["candidate_path"] = str(link)
     candidate_path.write_text(json.dumps(report), encoding="utf-8")
 
-    with pytest.raises(SyncPlanError, match="must not be a symlink"):
+    with pytest.raises(SyncPlanError, match="symlink components"):
         discard_sync_candidate(repo, candidate_path, approved=True)
 
     assert workspace.is_dir()
@@ -1034,6 +1034,23 @@ def test_sync_discard_rejects_candidate_with_wrong_origin(tmp_path):
     git(workspace, "remote", "set-url", "origin", str(other_repo))
 
     with pytest.raises(SyncPlanError, match="origin does not identify"):
+        discard_sync_candidate(repo, candidate_path, approved=True)
+
+    assert workspace.is_dir()
+
+
+def test_sync_discard_rejects_symlinked_parent_directory(tmp_path):
+    import json
+    from customizer.candidate_discard import discard_sync_candidate
+
+    repo, candidate, candidate_path, workspace = _make_registry_candidate(tmp_path)
+    alias = tmp_path.parent / f"{tmp_path.name}-alias"
+    alias.symlink_to(tmp_path, target_is_directory=True)
+    report = json.loads(candidate_path.read_text(encoding="utf-8"))
+    report["candidate_path"] = str(alias / workspace.name)
+    candidate_path.write_text(json.dumps(report), encoding="utf-8")
+
+    with pytest.raises(SyncPlanError, match="symlink components"):
         discard_sync_candidate(repo, candidate_path, approved=True)
 
     assert workspace.is_dir()
