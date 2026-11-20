@@ -1,4 +1,4 @@
-"""Explicitly discard only a verified USC-created sync candidate workspace."""
+"""Discard only a strictly validated USC-created sync candidate workspace."""
 from __future__ import annotations
 
 import json
@@ -30,7 +30,7 @@ def discard_sync_candidate(
     *,
     approved: bool = False,
 ) -> dict[str, Any]:
-    """Remove a USC-created uncommitted candidate after strict identity checks.
+    """Remove a USC-created candidate after strict identity checks.
 
     The original customized repository is never removed or modified. Deletion
     requires explicit approval and is limited to the exact workspace recorded
