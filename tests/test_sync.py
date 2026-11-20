@@ -1412,7 +1412,7 @@ def test_recovery_does_not_fast_forward_after_concurrent_original_commit(tmp_pat
         return original_git(path, *args, **kwargs)
 
     monkeypatch.setattr(acceptance, "_git", advance_original_before_recovery_fast_forward)
-    with pytest.raises(subprocess.CalledProcessError):
+    with pytest.raises(SyncPlanError, match="Not possible to fast-forward"):
         acceptance.recover_sync_acceptance(repo, candidate_report, approved=True)
 
     assert injected
