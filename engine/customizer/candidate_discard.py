@@ -158,7 +158,7 @@ def discard_sync_candidate(
         ignored_changes = _git(candidate, "ls-files", "--others", "--ignored", "--exclude-standard", "-z").stdout.split("\\0")
         changed_paths = {path for path in tracked_changes + untracked_changes + ignored_changes if path}
         if not changed_paths.issubset(allowed_metadata):
-            raise SyncPlanError("Pre-provenance candidate has changes outside generated provenance paths; inspect it manually instead of discarding.")
+            raise SyncPlanError("Pre-provenance candidate has changes outside generated provenance paths (" + ", ".join(sorted(changed_paths)) + "); inspect it manually instead of discarding.")
         baseline_in_parent = _git(candidate, "cat-file", "-e", customized + ":.usc/upstream-baseline.json", check=False).returncode == 0
         if baseline_in_parent and ".usc/upstream-baseline.json" not in changed_paths:
             expected_baseline = _git(candidate, "show", customized + ":.usc/upstream-baseline.json").stdout
