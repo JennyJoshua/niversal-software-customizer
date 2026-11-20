@@ -1315,3 +1315,41 @@ def test_acceptance_interrupted_during_provenance_write_can_be_discarded(tmp_pat
     assert git(repo, "rev-parse", "HEAD") == original_head
     assert not (repo / "upstream.txt").exists()
 
+def test_acceptance_does_not_fast_forward_after_concurrent_original_commit(tmp_path, monkeypatch):
+    import customizer.acceptance as acceptance
+    from customizer.sync import SyncPlanError
+
+    repo, _, _, workspace, _, candidate_path, verification_path = _make_verified_candidate(tmp_path)
+    original_head = git(repo, "rev-parse", "HEAD")
+    original_branch = git(repo, "branch", "--show-current")
+    original_git = acceptance._git
+    concurrent_head = None
+    injected = False
+
+    def advance_original_before_fast_forward(path, *args, **kwargs):
+        nonlocal concurrent_head, injected
+        if Path(path).resolve() == repo.resolve() and args and args[0] == "merge" and not injected:
+            (repo / "concurrent.txt").write_text("concurrent user change\\n", encoding="utf-8")
+            git(repo, "add", "concurrent.txt")
+            git(repo, "commit", "-m", "concurrent original-repository update")
+            concurrent_head = git(repo, "rev-parse", "HEAD")
+            injected = True
+        return original_git(path, *args, **kwargs)
+
+    monkeypatch.setattr(acceptance, "_git", advance_original_before_fast_forward)
+    with pytest.raises(SyncPlanError):
+        acceptance.accept_sync_candidate(
+            repo, candidate_path, verification_path,
+            upstream_url="https://github.com/upstream/sample-project",
+            approved=True, evidence_reviewed=True,
+        )
+
+    assert injected
+    assert git(repo, "branch", "--show-current") == original_branch
+    assert git(repo, "rev-parse", "HEAD") == concurrent_head
+    assert concurrent_head != original_head
+    assert (repo / "custom.txt").read_text(encoding="utf-8") == "custom work\\n"
+    assert (repo / "concurrent.txt").read_text(encoding="utf-8") == "concurrent user change\\n"
+    assert not (repo / "upstream.txt").exists()
+    assert not (repo / ".usc" / "upstream-baseline.json").exists()
+    assert workspace.is_dir()
