@@ -91,7 +91,7 @@ def test_staged_snapshot_is_bound_to_inspected_git_blobs(tmp_path):
         snapshot,
         expected_git_blobs=identity["_tracked_blob_sha_by_path"],
     )
-    assert (snapshot / "app.py").read_text(encoding="utf-8") == "print('fixture')\\n"
+    assert (snapshot / "app.py").read_text(encoding="utf-8") == "print('fixture')\n"
 
 
 def test_staged_snapshot_rejects_file_changed_after_git_identity_check(tmp_path):
