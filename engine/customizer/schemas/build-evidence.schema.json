@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jennyjoshua.github.io/universal-software-customizer/schemas/build-evidence.schema.json",
+  "title": "USC isolated build evidence",
+  "description": "Evidence for one explicitly approved isolated build attempt. It is not a security certification or release approval.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "operation", "status", "executed"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "operation": { "const": "isolated_build" },
+    "status": {
+      "enum": [
+        "blocked_approval_required",
+        "blocked_invalid_request",
+        "blocked_isolation_unavailable",
+        "blocked_cleanup_failed",
+        "passed",
+        "failed",
+        "timed_out",
+        "output_limit_exceeded",
+        "artifact_export_failed"
+      ]
+    },
+    "executed": { "type": "boolean" },
+    "exit_code": { "type": ["integer", "null"] },
+    "image": { "type": "string", "pattern": "@sha256:[0-9a-f]{64}$" },
+    "command_argv": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": { "type": "string", "minLength": 1, "maxLength": 4096 }
+    },
+    "command_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "docker_engine_version": { "type": ["string", "null"] },
+    "started_at": { "type": ["string", "null"], "format": "date-time" },
+    "finished_at": { "type": ["string", "null"], "format": "date-time" },
+    "duration_seconds": { "type": ["number", "null"], "minimum": 0 },
+    "timeout_seconds": { "type": "integer", "minimum": 1, "maximum": 3600 },
+    "log_bytes": { "type": "integer", "minimum": 0, "maximum": 1048576 },
+    "log_truncated": { "type": "boolean" },
+    "logs": { "type": "string", "maxLength": 1048576 },
+    "logs_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "source_read_only": { "type": "boolean" },
+    "network_disabled": { "type": "boolean" },
+    "source_snapshot_sha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+    "excluded_source_path_count": { "type": "integer", "minimum": 0 },
+    "artifact_exported": { "type": "boolean" },
+    "artifact_inventory": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "size_bytes", "sha256", "mode"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "size_bytes": { "type": "integer", "minimum": 0 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "mode": { "type": "integer", "minimum": 0, "maximum": 511 }
+        }
+      }
+    },
+    "artifact_inventory_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "container_cleanup_confirmed": { "type": "boolean" },
+    "output_path": { "type": "string" },
+    "command_executable": { "type": "string" },
+    "note": { "type": "string" },
+    "errors": { "type": "array", "items": { "type": "string" } }
+  }
+}
