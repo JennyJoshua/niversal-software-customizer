@@ -242,3 +242,25 @@ def test_apply_preserves_existing_file_permissions(tmp_path):
 
     assert report["status"] == "applied"
     assert stat.S_IMODE(target.stat().st_mode) == 0o640
+
+
+def test_adapter_rejects_svg_external_stylesheet_and_entity_declarations(tmp_path):
+    source, project, branding = project_fixture(tmp_path)
+    logo = source / "branding" / "logo.svg"
+    logo.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg"><style>@import url("https://example.com/evil.css");</style></svg>',
+        encoding="utf-8",
+    )
+    before = snapshot(source)
+    report = create_nextjs_branding_plan(source, project, branding)
+    assert report["status"] == "blocked_unsafe_or_unsupported"
+    assert snapshot(source) == before
+
+    logo.write_text(
+        '<!DOCTYPE svg [<!ENTITY x "unsafe">]><svg xmlns="http://www.w3.org/2000/svg">&x;</svg>',
+        encoding="utf-8",
+    )
+    before_entity = snapshot(source)
+    entity_report = create_nextjs_branding_plan(source, project, branding)
+    assert entity_report["status"] == "blocked_unsafe_or_unsupported"
+    assert snapshot(source) == before_entity
