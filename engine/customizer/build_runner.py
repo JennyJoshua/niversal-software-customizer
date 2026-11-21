@@ -149,7 +149,7 @@ def _stage_source_snapshot(source: Path, destination: Path) -> tuple[str, int]:
                 raise ValueError("Source snapshot exceeds the 20,000-file limit.")
 
             relative_bytes = os.fsencode(relative.as_posix())
-            mode = stat.S_IMODE(metadata.st_mode)
+            mode = stat.S_IMODE(metadata.st_mode) & 0o777
             digest.update(len(relative_bytes).to_bytes(4, "big"))
             digest.update(relative_bytes)
             digest.update(mode.to_bytes(4, "big"))
@@ -285,6 +285,7 @@ def run_isolated_build(
 
     run_label = f"com.usc.build-run={uuid.uuid4().hex}"
     logs = bytearray()
+    log_truncated = False
     status = "failed"
     exit_code = None
     cleanup_ok = True
@@ -341,6 +342,7 @@ def run_isolated_build(
                         available = max_log_bytes - len(logs)
                         if len(chunk) > available:
                             logs.extend(chunk[:available])
+                            log_truncated = True
                             status = "output_limit_exceeded"
                             process.kill()
                             break
@@ -389,7 +391,7 @@ def run_isolated_build(
         "command_executable": args[0],
         "timeout_seconds": timeout_seconds,
         "log_bytes": len(logs),
-        "log_truncated": status == "output_limit_exceeded",
+        "log_truncated": log_truncated,
         "logs": logs.decode("utf-8", errors="replace"),
         "source_read_only": True,
         "output_path": str(output),
