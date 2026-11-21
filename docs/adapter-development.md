@@ -51,3 +51,16 @@ The review record is a user-supplied gate, not an automated legal opinion. The c
 7. Document limitations and build commands.
 
 An adapter is not complete merely because it can edit a file. It must prove the change suits the project's conventions and does not break unrelated behavior.
+
+
+## Dry-run diff and application report
+
+The read-only customize-plan command emits a deterministic JSON review report. Each planned operation includes the path, create/update operation, before/after SHA-256, reason, and a unified diff for UTF-8 text files. Binary assets are identified with diff_format "binary" and no inline diff; oversized text diffs are explicitly marked "omitted_size_limit". The plan remains read-only.
+
+Save and inspect the report before applying it:
+
+```bash
+usc customize-plan --path ./project --project-config ./project.json --branding-config ./branding.json --output ./reviewed-plan.json
+```
+
+The customize-apply command requires that exact reviewed report via --plan-report, plus explicit --approve. The resulting JSON application report includes the per-file change report and hashes for applied files. If configuration, source files, or targets changed after review, application blocks and requires a fresh plan.

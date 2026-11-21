@@ -1,6 +1,7 @@
 """Guarded branding adapter for explicitly marked Next.js App Router projects."""
 from __future__ import annotations
 
+import difflib
 import hashlib
 import json
 import os
@@ -26,6 +27,30 @@ _MARKERS = {
 
 def _digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _unified_diff(relative: str, original: bytes | None, updated: bytes) -> tuple[str | None, str]:
+    """Return a deterministic text diff; binary or oversized content is explicitly marked."""
+    old_bytes = original or b""
+    if b"\x00" in old_bytes or b"\x00" in updated:
+        return None, "binary"
+    try:
+        old_text = old_bytes.decode("utf-8")
+        new_text = updated.decode("utf-8")
+    except UnicodeDecodeError:
+        return None, "binary"
+    old_lines = old_text.splitlines(keepends=True)
+    new_lines = new_text.splitlines(keepends=True)
+    diff = "".join(difflib.unified_diff(
+        old_lines,
+        new_lines,
+        fromfile=f"a/{relative}" if original is not None else "/dev/null",
+        tofile=f"b/{relative}",
+        lineterm="\n",
+    ))
+    if len(diff.encode("utf-8")) > 200_000:
+        return None, "omitted_size_limit"
+    return diff, "text"
 
 
 def _load_json(path: str | Path) -> dict[str, Any]:
@@ -276,12 +301,15 @@ def _build_plan(
     operations = []
     for relative in sorted(payloads):
         _, updated, original = payloads[relative]
+        diff, diff_format = _unified_diff(relative, original, updated)
         operations.append({
             "path": relative,
             "operation": "create" if original is None else "update_marked_block",
             "before_sha256": _digest(original) if original is not None else None,
             "after_sha256": _digest(updated),
             "reason": "Explicitly allowlisted Next.js branding surface or USC-owned asset target.",
+            "diff": diff,
+            "diff_format": diff_format,
         })
     report = {
         "schema_version": "1.0",
@@ -434,6 +462,10 @@ def apply_nextjs_branding(
             "schema_version": "1.0", "operation": "customization_apply",
             "adapter_id": "web-nextjs", "status": "applied",
             "project_id": report.get("project_id"), "changed_files": changed,
+            "change_report": [
+                {**item, "status": "applied"}
+                for item in report.get("planned_changes", [])
+            ],
             "files_changed": bool(changed), "code_executed": False,
             "note": "Only explicitly allowlisted USC-marked files and USC-owned public asset names were written. No project scripts were executed.",
         }
