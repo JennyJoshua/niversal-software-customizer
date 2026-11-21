@@ -144,7 +144,7 @@ def _verify_git_blob(relative_path: str, raw: bytes, expected_git_blobs: dict[st
         raise ValueError(f"Provenance metadata is not tracked in the verified Git tree: {relative_path}")
     algorithm = "sha1" if len(expected) == 40 else "sha256"
     digest = hashlib.new(algorithm)
-    digest.update(f"blob {len(raw)}\\0".encode("ascii"))
+    digest.update(f"blob {len(raw)}\0".encode("ascii"))
     digest.update(raw)
     if digest.hexdigest() != expected:
         raise ValueError(f"Provenance metadata changed after Git identity inspection: {relative_path}")
