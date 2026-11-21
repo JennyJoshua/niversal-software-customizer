@@ -69,6 +69,10 @@ def test_output_directory_cannot_contain_or_enclose_source(tmp_path):
 
 def test_runner_fails_closed_when_docker_is_unavailable(tmp_path, monkeypatch):
     source, output = _paths(tmp_path)
+    (source / ".usc").mkdir()
+    baseline = source / ".usc" / "upstream-baseline.json"
+    baseline.write_text('{"baseline":"fixture"}', encoding="utf-8")
+    before = baseline.read_bytes()
     monkeypatch.setattr("customizer.build_runner.shutil.which", lambda _name: None)
     report = run_isolated_build(
         source, output, image=IMAGE, command=["python", "-m", "pytest"],
@@ -76,6 +80,7 @@ def test_runner_fails_closed_when_docker_is_unavailable(tmp_path, monkeypatch):
     )
     assert report["status"] == "blocked_isolation_unavailable"
     assert report["executed"] is False
+    assert baseline.read_bytes() == before
 
 
 def test_runner_uses_restricted_container_and_reports_success(tmp_path, monkeypatch):
@@ -191,6 +196,10 @@ def test_runner_uses_restricted_container_and_reports_success(tmp_path, monkeypa
 
 def test_runner_marks_container_cleanup_failure_as_blocked(tmp_path, monkeypatch):
     source, output = _paths(tmp_path)
+    (source / ".usc").mkdir()
+    baseline = source / ".usc" / "upstream-baseline.json"
+    baseline.write_text('{"baseline":"fixture"}', encoding="utf-8")
+    before = baseline.read_bytes()
 
     class FakeProcess:
         def __init__(self, _argv, **_kwargs):
@@ -238,6 +247,7 @@ def test_runner_marks_container_cleanup_failure_as_blocked(tmp_path, monkeypatch
     )
     assert report["status"] == "blocked_cleanup_failed"
     assert report["container_cleanup_confirmed"] is False
+    assert baseline.read_bytes() == before
 
 
 
@@ -255,6 +265,10 @@ def test_runner_requires_an_empty_output_directory(tmp_path):
 
 def test_runner_kills_container_when_log_limit_is_exceeded(tmp_path, monkeypatch):
     source, output = _paths(tmp_path)
+    (source / ".usc").mkdir()
+    baseline = source / ".usc" / "upstream-baseline.json"
+    baseline.write_text('{"baseline":"fixture"}', encoding="utf-8")
+    before = baseline.read_bytes()
     killed = {"value": False}
 
     class FakeProcess:
@@ -305,12 +319,17 @@ def test_runner_kills_container_when_log_limit_is_exceeded(tmp_path, monkeypatch
     assert report["log_truncated"] is True
     assert killed["value"] is True
     assert report["container_cleanup_confirmed"] is True
+    assert baseline.read_bytes() == before
 
 
 def test_runner_stops_execution_at_timeout(tmp_path, monkeypatch):
     import io
 
     source, output = _paths(tmp_path)
+    (source / ".usc").mkdir()
+    baseline = source / ".usc" / "upstream-baseline.json"
+    baseline.write_text('{"baseline":"fixture"}', encoding="utf-8")
+    before = baseline.read_bytes()
     killed = {"value": False}
 
     class FakeSelector:
@@ -366,6 +385,7 @@ def test_runner_stops_execution_at_timeout(tmp_path, monkeypatch):
     assert report["status"] == "timed_out"
     assert killed["value"] is True
     assert report["container_cleanup_confirmed"] is True
+    assert baseline.read_bytes() == before
 
 
 
