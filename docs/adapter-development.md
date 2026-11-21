@@ -16,27 +16,27 @@ Adapters translate common branding intent into safe changes for a specific proje
 
 ## First adapter: Next.js App Router
 
-The initial \`web-nextjs\` adapter is intentionally narrow. It supports only one of \`app/\` or \`src/app/\`, with \`layout.tsx\`, \`globals.css\`, and \`page.tsx\`, plus an existing \`public/\` directory. Each supported source file must contain exactly one pair of the documented USC markers:
+The initial `web-nextjs` adapter is intentionally narrow. It supports only one of `app/` or `src/app/`, with `layout.tsx`, `globals.css`, and `page.tsx`, plus an existing `public/` directory. Each supported source file must contain exactly one pair of the documented USC markers:
 
-- \`/* USC:branding:metadata:start */\` / \`/* USC:branding:metadata:end */\`
-- \`/* USC:branding:theme:start */\` / \`/* USC:branding:theme:end */\`
-- \`{/* USC:branding:logo:start */}\` / \`{/* USC:branding:logo:end */}\`
+- `/* USC:branding:metadata:start */` / `/* USC:branding:metadata:end */`
+- `/* USC:branding:theme:start */` / `/* USC:branding:theme:end */`
+- `{/* USC:branding:logo:start */}` / `{/* USC:branding:logo:end */}`
 
-The adapter updates only the contents between markers. It supports product name/tagline metadata, both theme colours, an SVG logo, and an ICO favicon. Asset outputs use the USC-owned paths \`public/usc-brand-logo.svg\` and \`public/usc-brand-favicon.ico\`; an existing different file at either path blocks the operation.
+The adapter updates only the contents between markers. It supports product name/tagline metadata, both theme colours, an SVG logo, and an ICO favicon. Asset outputs use the USC-owned paths `public/usc-brand-logo.svg` and `public/usc-brand-favicon.ico`; an existing different file at either path blocks the operation.
 
-The logo SVG is parsed and rejected if it contains script/foreign-object elements, event-handler attributes, or external references. The favicon must have an ICO header. Paths are rechecked for traversal and symlinks. The adapter does not modify licence/notice files, \`.git\`, \`.usc\`, or paths outside its fixed allowlist.
+The logo SVG is parsed and rejected if it contains script/foreign-object elements, event-handler attributes, or external references. The favicon must have an ICO header. Paths are rechecked for traversal and symlinks. The adapter does not modify licence/notice files, `.git`, `.usc`, or paths outside its fixed allowlist.
 
 Run the read-only plan:
 
-\`\`\`bash
+```bash
 usc customize-plan --path ./project --project-config ./project.json --branding-config ./branding.json
-\`\`\`
+```
 
-Apply only after a human has completed the rights review, set \`licence_review.status\` to \`approved\` with a review record, and deliberately approves the local change:
+Apply only after a human has completed the rights review, set `licence_review.status` to `approved` with a review record, and deliberately approves the local change:
 
-\`\`\`bash
+```bash
 usc customize-apply --path ./project --project-config ./project.json --branding-config ./branding.json --plan-report ./reviewed-plan.json --approve
-\`\`\`
+```
 
 The review record is a user-supplied gate, not an automated legal opinion. The command does not run Next.js scripts, install dependencies, build the app, or publish anything. Application writes are limited to the five allowlisted paths above; unrelated files and upstream notices are preserved by tests.
 
