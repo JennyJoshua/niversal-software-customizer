@@ -44,7 +44,7 @@ The `config-check` command validates project and branding JSON against the versi
 
 ## Isolated build runner (early Phase 6)
 
-The internal Python API `customizer.build_runner.run_isolated_build` runs an explicitly approved argv command in a digest-pinned Docker image with networking disabled, a read-only source mount, a bounded output tmpfs, resource/time limits, bounded logs, and container-cleanup verification. It does not pull images or fall back to host execution. There is no CLI command yet, and the runner is not ready for arbitrary customer repositories: source-secret filtering, exact Git tree binding, evidence capture, and provenance are still outstanding. Use synthetic fixtures only.
+The internal Python API `customizer.build_runner.run_isolated_build` runs an explicitly approved argv command in a digest-pinned Docker image with networking disabled, a read-only staged source mount, a bounded output tmpfs, resource/time limits, bounded logs, and container-cleanup verification. It excludes `.git`/`.usc` and known credential paths, rejects symlinks, and computes a deterministic USC SHA-256 source fingerprint. It does not pull images or fall back to host execution. There is no CLI command yet. The exclusion rules are not a complete secret scanner, and the fingerprint is not yet tied to a Git tree SHA or sync history. Use synthetic fixtures only.
 
 ## Repository identity
 
