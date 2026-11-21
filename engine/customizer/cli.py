@@ -67,7 +67,8 @@ def build_parser() -> argparse.ArgumentParser:
     apply_parser.add_argument("--path", required=True, help="Customized Next.js project directory.")
     apply_parser.add_argument("--project-config", required=True, help="Path to project.json configuration.")
     apply_parser.add_argument("--branding-config", required=True, help="Path to branding.json configuration.")
-    apply_parser.add_argument("--approve", action="store_true", help="Explicitly approve the planned local branding writes.")
+    apply_parser.add_argument("--plan-report", required=True, help="Reviewed JSON report emitted by customize-plan.")
+    apply_parser.add_argument("--approve", action="store_true", help="Explicitly approve applying the reviewed plan.")
     apply_parser.add_argument("--output", help="Write JSON report outside the source directory.")
 
     sync_parser = subparsers.add_parser(
@@ -206,9 +207,20 @@ def main(argv: list[str] | None = None) -> int:
                 output_path = Path(args.output).expanduser().resolve()
                 if output_path == source_root or source_root in output_path.parents:
                     raise ValueError("Apply report output must be outside the source directory.")
+            plan_path = Path(args.plan_report).expanduser()
+            if plan_path.is_symlink():
+                raise ValueError("Reviewed plan report must not be a symlink.")
+            plan_path = plan_path.resolve(strict=True)
+            if not plan_path.is_file():
+                raise ValueError("Reviewed plan report must be a regular file.")
+            if plan_path == source_root or source_root in plan_path.parents:
+                raise ValueError("Reviewed plan report must be outside the source directory.")
+            expected_plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            if not isinstance(expected_plan, dict):
+                raise ValueError("Reviewed plan report must contain a JSON object.")
             report = apply_nextjs_branding(
                 source_root, args.project_config, args.branding_config,
-                approved=args.approve,
+                approved=args.approve, expected_plan=expected_plan,
             )
             _write_report(report, args.output, source_root)
             if report.get("status", "").startswith("blocked"):

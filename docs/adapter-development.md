@@ -35,7 +35,7 @@ usc customize-plan --path ./project --project-config ./project.json --branding-c
 Apply only after a human has completed the rights review, set \`licence_review.status\` to \`approved\` with a review record, and deliberately approves the local change:
 
 \`\`\`bash
-usc customize-apply --path ./project --project-config ./project.json --branding-config ./branding.json --approve
+usc customize-apply --path ./project --project-config ./project.json --branding-config ./branding.json --plan-report ./reviewed-plan.json --approve
 \`\`\`
 
 The review record is a user-supplied gate, not an automated legal opinion. The command does not run Next.js scripts, install dependencies, build the app, or publish anything. Application writes are limited to the five allowlisted paths above; unrelated files and upstream notices are preserved by tests.

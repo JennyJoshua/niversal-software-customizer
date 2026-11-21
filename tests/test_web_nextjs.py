@@ -54,6 +54,13 @@ def project_fixture(tmp_path: Path, *, review_status: str = "approved") -> tuple
     return source, project_path, branding_path
 
 
+def apply_approved(source: Path, project: Path, branding: Path):
+    plan = create_nextjs_branding_plan(source, project, branding)
+    return apply_nextjs_branding(
+        source, project, branding, approved=True, expected_plan=plan,
+    )
+
+
 def snapshot(root: Path) -> dict[str, bytes]:
     return {
         path.relative_to(root).as_posix(): path.read_bytes()
@@ -98,7 +105,7 @@ def test_apply_requires_explicit_approval_and_human_licence_review(tmp_path):
 
     source2, project2, branding2 = project_fixture(tmp_path / "pending", review_status="pending")
     before_pending = snapshot(source2)
-    denied_review = apply_nextjs_branding(source2, project2, branding2, approved=True)
+    denied_review = apply_approved(source2, project2, branding2)
     assert denied_review["status"] == "blocked_unsafe_or_unsupported"
     assert snapshot(source2) == before_pending
 
@@ -107,7 +114,7 @@ def test_apply_changes_only_allowlisted_branding_surfaces(tmp_path):
     source, project, branding = project_fixture(tmp_path)
     before = snapshot(source)
 
-    report = apply_nextjs_branding(source, project, branding, approved=True)
+    report = apply_approved(source, project, branding)
 
     assert report["status"] == "applied"
     assert report["files_changed"] is True
@@ -152,7 +159,7 @@ def test_adapter_rejects_unsafe_svg_before_planning_or_writing(tmp_path):
     )
     before = snapshot(source)
 
-    report = apply_nextjs_branding(source, project, branding, approved=True)
+    report = apply_approved(source, project, branding)
 
     assert report["status"] == "blocked_unsafe_or_unsupported"
     assert snapshot(source) == before
@@ -200,10 +207,13 @@ def test_cli_plan_routes_to_implemented_nextjs_adapter(tmp_path, capsys):
 def test_cli_apply_rejects_in_source_report_path_before_writing(tmp_path, capsys):
     source, project, branding = project_fixture(tmp_path)
     before = snapshot(source)
+    plan_path = tmp_path / "reviewed-plan.json"
+    plan_path.write_text(json.dumps(create_nextjs_branding_plan(source, project, branding)), encoding="utf-8")
     result = main([
         "customize-apply", "--path", str(source),
         "--project-config", str(project), "--branding-config", str(branding),
-        "--approve", "--output", str(source / "apply-report.json"),
+        "--plan-report", str(plan_path), "--approve",
+        "--output", str(source / "apply-report.json"),
     ])
     assert result == 2
     assert "outside the source directory" in capsys.readouterr().err
@@ -264,3 +274,19 @@ def test_adapter_rejects_svg_external_stylesheet_and_entity_declarations(tmp_pat
     entity_report = create_nextjs_branding_plan(source, project, branding)
     assert entity_report["status"] == "blocked_unsafe_or_unsupported"
     assert snapshot(source) == before_entity
+
+
+def test_apply_rejects_a_plan_that_no_longer_matches_current_configuration(tmp_path):
+    source, project, branding = project_fixture(tmp_path)
+    reviewed = create_nextjs_branding_plan(source, project, branding)
+    config = json.loads(branding.read_text(encoding="utf-8"))
+    config["brand"]["product_name"] = "Changed after review"
+    branding.write_text(json.dumps(config), encoding="utf-8")
+    before = snapshot(source)
+
+    report = apply_nextjs_branding(
+        source, project, branding, approved=True, expected_plan=reviewed,
+    )
+
+    assert report["status"] == "blocked_unsafe_or_unsupported"
+    assert snapshot(source) == before

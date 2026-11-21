@@ -325,13 +325,20 @@ def apply_nextjs_branding(
     branding_config: str | Path,
     *,
     approved: bool = False,
+    expected_plan: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Apply only the adapter's exact allowlisted operations after explicit approval."""
+    """Apply only the exact read-only plan that the caller reviewed and approved."""
     if not approved:
         return {
             "schema_version": "1.0", "operation": "customization_apply",
             "adapter_id": "web-nextjs", "status": "blocked_approval_required",
             "files_changed": False, "errors": ["Explicit --approve is required."],
+        }
+    if not isinstance(expected_plan, dict):
+        return {
+            "schema_version": "1.0", "operation": "customization_apply",
+            "adapter_id": "web-nextjs", "status": "blocked_plan_review_required",
+            "files_changed": False, "errors": ["A reviewed customize-plan report is required."],
         }
     try:
         project = _load_json(project_config)
@@ -339,6 +346,8 @@ def apply_nextjs_branding(
         if not isinstance(review, dict) or review.get("status") != "approved" or not isinstance(review.get("review_record"), dict):
             raise ValueError("Human licence review must be marked approved with a review_record before application.")
         report, payloads = _build_plan(project_root, project_config, branding_config)
+        if expected_plan != report:
+            raise ValueError("Reviewed plan no longer matches current project/configuration state; generate and review a fresh plan.")
         if report["status"] not in {"ready_for_review", "no_changes_needed"}:
             return {**report, "operation": "customization_apply", "status": "blocked_plan", "files_changed": False}
         root = Path(project_root).expanduser().resolve(strict=True)
