@@ -297,6 +297,8 @@ def run_isolated_build(
         with tempfile.TemporaryDirectory(prefix="usc-build-") as temporary_root:
             staged_source = Path(temporary_root) / "source"
             source_snapshot_sha256, excluded_source_path_count = _stage_source_snapshot(source, staged_source)
+            if "," in str(staged_source):
+                raise ValueError("Temporary snapshot path must not contain commas.")
             docker_argv = [
                 docker, "run", "--pull=never",
                 "--network=none", "--read-only",
@@ -358,15 +360,20 @@ def run_isolated_build(
             finally:
                 selector.close()
                 process.stdout.close()
-    except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
+    except ValueError as exc:
+        status = "blocked_invalid_request"
+        execution_started = False
+        logs.extend(str(exc).encode("utf-8", errors="replace")[:max_log_bytes])
+    except (OSError, subprocess.TimeoutExpired) as exc:
         if process is not None and process.poll() is None:
             process.kill()
             try:
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 pass
-        status = "blocked_invalid_request" if process is None else "blocked_isolation_unavailable"
-        execution_started = False if process is None else execution_started
+        status = "blocked_invalid_request" if source_snapshot_sha256 is None else "blocked_isolation_unavailable"
+        if process is None:
+            execution_started = False
         logs.extend(str(exc).encode("utf-8", errors="replace")[:max_log_bytes])
     finally:
         cleanup_ok = _cleanup_labelled_containers(docker, run_label)
