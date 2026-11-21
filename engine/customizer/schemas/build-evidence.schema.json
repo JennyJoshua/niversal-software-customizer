@@ -25,6 +25,7 @@
     "executed": { "type": "boolean" },
     "exit_code": { "type": ["integer", "null"] },
     "image": { "type": "string", "pattern": "@sha256:[0-9a-f]{64}$" },
+    "docker_image_id": { "type": "string", "minLength": 1 },
     "command_argv": {
       "type": "array",
       "minItems": 1,
