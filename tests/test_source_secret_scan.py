@@ -12,7 +12,7 @@ def test_detects_high_confidence_credentials_without_returning_values():
 
 def test_detects_private_key_header():
     scanner = SourceSecretScanner()
-    scanner.feed(b"-----BEGIN OPENSSH PRIVATE KEY-----")
+    scanner.feed(b"-----BEGIN " + b"OPENSSH " + b"PRIVATE KEY-----")
     assert scanner.findings == {"private_key_pem"}
 
 
