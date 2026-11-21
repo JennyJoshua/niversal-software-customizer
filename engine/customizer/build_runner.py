@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import stat
@@ -11,13 +12,27 @@ import subprocess
 import tempfile
 import time
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
+
+from .build_evidence import create_artifact_inventory, redact_build_logs, validate_build_evidence
 
 _PINNED_IMAGE = re.compile(r"^[^\s@]+@sha256:[0-9a-f]{64}$")
 _SHELLS = {"sh", "bash", "dash", "zsh", "fish", "cmd", "powershell", "pwsh"}
 _MAX_TIMEOUT = 3600
 _MAX_LOG_BYTES = 1_048_576
+_SECRET_ARG_PATTERN = re.compile(r"(?i)(?:password|token|secret|api[_-]?key|credential|authorization)[\\w-]*\\s*[:=]")
+_SECRET_FLAGS = {
+    "--password", "--token", "--secret", "--api-key", "--apikey",
+    "--credential", "--authorization", "--auth-token",
+}
+
+
+def _validated_result(report: dict) -> dict:
+    report.setdefault("schema_version", "1.0")
+    validate_build_evidence(report)
+    return report
 
 
 def _directory(path: str | Path, label: str) -> Path:
@@ -48,6 +63,10 @@ def _validate_request(
     executable = Path(args[0]).name.lower()
     if executable in _SHELLS:
         raise ValueError("Shell interpreters are not accepted; provide an executable and arguments directly.")
+    for argument in args:
+        lowered = argument.lower()
+        if lowered in _SECRET_FLAGS or _SECRET_ARG_PATTERN.search(argument) or re.search(r"(?i)://[^/@:\\s]+:[^/@\\s]+@", argument):
+            raise ValueError("Build command arguments must not contain passwords, tokens, credentials, or authenticated URLs.")
     if not isinstance(timeout_seconds, int) or isinstance(timeout_seconds, bool) or not 1 <= timeout_seconds <= _MAX_TIMEOUT:
         raise ValueError(f"timeout_seconds must be between 1 and {_MAX_TIMEOUT}.")
     if not isinstance(max_log_bytes, int) or isinstance(max_log_bytes, bool) or not 1024 <= max_log_bytes <= _MAX_LOG_BYTES:
@@ -242,32 +261,32 @@ def run_isolated_build(
     variables, credentials, sockets, or additional mounts are passed to the container.
     """
     if approved is not True:
-        return {
+        return _validated_result({
             "operation": "isolated_build",
             "status": "blocked_approval_required",
             "executed": False,
             "note": "Execution requires explicit approval of this exact command and image.",
-        }
+        })
     try:
         source, output, args = _validate_request(
             source_path, output_path, image, command, timeout_seconds, max_log_bytes,
         )
     except (OSError, ValueError) as exc:
-        return {
+        return _validated_result({
             "operation": "isolated_build",
             "status": "blocked_invalid_request",
             "executed": False,
             "errors": [str(exc)],
-        }
+        })
 
     docker = shutil.which("docker")
     if not docker:
-        return {
+        return _validated_result({
             "operation": "isolated_build",
             "status": "blocked_isolation_unavailable",
             "executed": False,
             "errors": ["Docker CLI is unavailable; no fallback execution is permitted."],
-        }
+        })
     try:
         probe = subprocess.run(
             [docker, "info", "--format", "{{.ServerVersion}}"],
@@ -276,12 +295,30 @@ def run_isolated_build(
     except (OSError, subprocess.TimeoutExpired):
         probe = None
     if probe is None or probe.returncode != 0:
-        return {
+        return _validated_result({
             "operation": "isolated_build",
             "status": "blocked_isolation_unavailable",
             "executed": False,
             "errors": ["Docker daemon is unavailable; no fallback execution is permitted."],
-        }
+        })
+    docker_engine_version = (probe.stdout or "").strip() or None
+    try:
+        image_probe = subprocess.run(
+            [docker, "image", "inspect", "--format", "{{.Id}}", image],
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        image_probe = None
+    if image_probe is None or image_probe.returncode != 0 or not (image_probe.stdout or "").strip():
+        return _validated_result({
+            "operation": "isolated_build",
+            "status": "blocked_isolation_unavailable",
+            "executed": False,
+            "image": image,
+            "command_argv": args,
+            "errors": ["The digest-pinned image is not available locally; image pulling is disabled."],
+        })
+    docker_image_id = image_probe.stdout.strip()
 
     run_label = f"com.usc.build-run={uuid.uuid4().hex}"
     logs = bytearray()
@@ -294,6 +331,14 @@ def run_isolated_build(
     process = None
     source_snapshot_sha256 = None
     excluded_source_path_count = 0
+    artifact_inventory = []
+    artifact_inventory_sha256 = hashlib.sha256(b"[]").hexdigest()
+    started_at = None
+    started_monotonic = None
+    errors = []
+    command_sha256 = hashlib.sha256(
+        json.dumps(args, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
     try:
         with tempfile.TemporaryDirectory(prefix="usc-build-") as temporary_root:
             staged_source = Path(temporary_root) / "source"
@@ -315,6 +360,8 @@ def run_isolated_build(
                 "--env=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
                 image, *args,
             ]
+            started_at = datetime.now(timezone.utc).isoformat()
+            started_monotonic = time.monotonic()
             process = subprocess.Popen(
                 docker_argv,
                 stdin=subprocess.DEVNULL,
@@ -326,7 +373,7 @@ def run_isolated_build(
             assert process.stdout is not None
             selector = selectors.DefaultSelector()
             selector.register(process.stdout, selectors.EVENT_READ)
-            deadline = time.monotonic() + timeout_seconds
+            deadline = started_monotonic + timeout_seconds
             try:
                 while selector.get_map():
                     remaining = deadline - time.monotonic()
@@ -357,14 +404,23 @@ def run_isolated_build(
                     else:
                         status = "passed" if exit_code == 0 else "failed"
                         artifact_exported = _export_container_output(docker, run_label, output)
+                        if artifact_exported:
+                            try:
+                                artifact_inventory, artifact_inventory_sha256 = create_artifact_inventory(output)
+                            except (OSError, ValueError) as exc:
+                                artifact_exported = False
+                                errors.append(str(exc))
                         if not artifact_exported:
                             status = "artifact_export_failed"
+                            if not errors:
+                                errors.append("Build artifacts could not be exported and inventoried safely.")
             finally:
                 selector.close()
                 process.stdout.close()
     except ValueError as exc:
         status = "blocked_invalid_request"
         execution_started = False
+        errors.append(str(exc))
         logs.extend(str(exc).encode("utf-8", errors="replace")[:max_log_bytes])
     except (OSError, subprocess.TimeoutExpired) as exc:
         if process is not None and process.poll() is None:
@@ -376,29 +432,51 @@ def run_isolated_build(
         status = "blocked_invalid_request" if source_snapshot_sha256 is None else "blocked_isolation_unavailable"
         if process is None:
             execution_started = False
+        errors.append(str(exc))
         logs.extend(str(exc).encode("utf-8", errors="replace")[:max_log_bytes])
     finally:
         cleanup_ok = _cleanup_labelled_containers(docker, run_label)
 
     if not cleanup_ok:
         status = "blocked_cleanup_failed"
-    return {
+        errors.append("USC could not confirm cleanup of every container created for this build.")
+    finished_at = datetime.now(timezone.utc).isoformat() if started_at else None
+    duration_seconds = round(max(0.0, time.monotonic() - started_monotonic), 3) if started_monotonic is not None else None
+    redacted_logs = redact_build_logs(logs.decode("utf-8", errors="replace"))
+    redacted_bytes = redacted_logs.encode("utf-8")
+    if len(redacted_bytes) > max_log_bytes:
+        redacted_logs = redacted_bytes[:max_log_bytes].decode("utf-8", errors="replace")
+        log_truncated = True
+    logs_sha256 = hashlib.sha256(redacted_logs.encode("utf-8")).hexdigest()
+    return _validated_result({
+        "schema_version": "1.0",
         "operation": "isolated_build",
         "status": status,
         "executed": execution_started,
         "exit_code": exit_code,
         "image": image,
+        "docker_image_id": docker_image_id,
+        "docker_engine_version": docker_engine_version,
+        "command_argv": args,
+        "command_sha256": command_sha256,
         "command_executable": args[0],
+        "started_at": started_at,
+        "finished_at": finished_at,
+        "duration_seconds": duration_seconds,
         "timeout_seconds": timeout_seconds,
         "log_bytes": len(logs),
         "log_truncated": log_truncated,
-        "logs": logs.decode("utf-8", errors="replace"),
+        "logs": redacted_logs,
+        "logs_sha256": logs_sha256,
         "source_read_only": True,
         "output_path": str(output),
         "artifact_exported": artifact_exported,
+        "artifact_inventory": artifact_inventory,
+        "artifact_inventory_sha256": artifact_inventory_sha256,
         "source_snapshot_sha256": source_snapshot_sha256,
         "excluded_source_path_count": excluded_source_path_count,
         "network_disabled": True,
         "container_cleanup_confirmed": cleanup_ok,
-        "note": "No host environment variables or credentials were forwarded. The image was not pulled; it had to be pre-provisioned locally.",
-    }
+        "errors": errors,
+        "note": "No host environment variables or credentials were forwarded. The image was not pulled; it had to be pre-provisioned locally. Log redaction is best-effort.",
+    })
