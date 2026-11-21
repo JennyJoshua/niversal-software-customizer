@@ -19,6 +19,8 @@ The runner requires all of the following:
 - A hard timeout and bounded captured logs.
 - A unique container label and a post-run cleanup check. If cleanup cannot be confirmed, the result is blocked_cleanup_failed.
 
+The source snapshot rejects symlinks and non-regular files, fails on incomplete directory traversal, and is limited to 256 MB, 20,000 files, and 50 MB per file. A deterministic SHA-256 fingerprint covers each included relative path, file mode, size, and content. Known exclusions include .git/.usc, common cloud/CLI credential directories, .env files other than example templates, credential files, and private-key/certificate formats. This is a filename/path denylist, not a complete secret scanner; it cannot guarantee that arbitrary secrets are absent. Human review remains required, and only synthetic fixtures are permitted at this stage.
+
 The host output directory must exist, be empty, be writable by the non-root runner, and be separate from (not an ancestor or descendant of) the source directory. Build code writes only to the size-limited container tmpfs; USC copies the output back after execution. Exported symlinks are rejected. This avoids exposing an unbounded host directory as a writable container mount.
 
 ## Invocation contract
@@ -54,6 +56,6 @@ Do not pass secrets in command arguments or source files. A mounted source tree 
 
 ## Current limitations
 
-This is an initial local Docker runner, not yet a complete CI orchestration or provenance system. It does not yet stage a secret-filtered source snapshot, compute/bind a Git tree SHA, capture a complete toolchain inventory, hash artifacts, validate a provenance manifest, or provide a CLI command. Those are subsequent Phase 6 batches. Use synthetic fixtures only until those controls and failure tests are complete.
+This is an initial local Docker runner, not yet a complete CI orchestration or provenance system. It stages a bounded source snapshot with known-path secret exclusions and a USC SHA-256 content fingerprint, but the denylist is not a complete secret scanner and the fingerprint is not yet bound to a Git tree SHA or sync provenance. It also does not yet capture a complete toolchain inventory, hash artifacts, validate a provenance manifest, or provide a CLI command. Those are subsequent Phase 6 batches. Use synthetic fixtures only until those controls and failure tests are complete.
 
-The runner is not a guarantee against container-runtime vulnerabilities or malicious build code. Use a patched Docker daemon and trusted, digest-pinned images. Never expose Docker socket or credentials inside the build container.
+The runner is not a guarantee against container-runtime vulnerabilities or malicious build code. The snapshot fingerprint is a USC content digest, not yet a Git tree SHA or a provenance attestation; later Phase 6 work must bind it to repository revision and sync history. Use a patched Docker daemon and trusted, digest-pinned images. Never expose Docker socket or credentials inside the build container.

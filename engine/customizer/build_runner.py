@@ -1,11 +1,14 @@
 """Fail-closed disposable build execution using a pre-provisioned Docker image."""
 from __future__ import annotations
 
+import hashlib
 import os
 import re
+import stat
 import selectors
 import shutil
 import subprocess
+import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -63,6 +66,113 @@ def _validate_request(
     if any(output.iterdir()):
         raise ValueError("Output directory must be empty before execution.")
     return source, output, args
+
+_EXCLUDED_DIRS = {
+    ".git", ".usc", ".ssh", ".aws", ".azure", ".gcloud", ".terraform",
+    ".docker", ".kube", ".config", ".firebase",
+}
+_EXCLUDED_FILE_NAMES = {
+    ".git", ".gitconfig", ".env", ".npmrc", ".pypirc", ".netrc", ".git-credentials",
+    ".vault-token", ".pgpass", ".my.cnf", "id_rsa", "id_dsa", "id_ecdsa",
+    "id_ed25519", "credentials", "credentials.json", "secrets.json", "secret.json",
+}
+_SAFE_ENV_EXAMPLES = {".env.example", ".env.sample", ".env.template"}
+_SENSITIVE_SUFFIXES = {
+    ".pem", ".key", ".p12", ".pfx", ".p8", ".jks", ".keystore",
+    ".tfstate", ".secret", ".token", ".mobileprovision",
+}
+_MAX_SOURCE_BYTES = 256 * 1024 * 1024
+_MAX_SOURCE_FILES = 20_000
+_MAX_SINGLE_SOURCE_FILE = 50 * 1024 * 1024
+
+
+def _is_sensitive_file(relative: Path) -> bool:
+    name = relative.name.lower()
+    suffix = relative.suffix.lower()
+    if name in _EXCLUDED_FILE_NAMES:
+        return True
+    if name.startswith(".env") and name not in _SAFE_ENV_EXAMPLES:
+        return True
+    if suffix in _SENSITIVE_SUFFIXES:
+        return True
+    if (name.startswith("service-account") or name.startswith("firebase-adminsdk")) and suffix == ".json":
+        return True
+    if "credential" in name and suffix in {".json", ".yaml", ".yml", ".toml"}:
+        return True
+    return False
+
+
+def _stage_source_snapshot(source: Path, destination: Path) -> tuple[str, int]:
+    """Copy a bounded source snapshot while excluding VCS metadata and known secret files."""
+    destination.mkdir(parents=True, exist_ok=False)
+    digest = hashlib.sha256()
+    total_bytes = 0
+    file_count = 0
+    excluded_count = 0
+
+    def raise_walk_error(error: OSError) -> None:
+        raise error
+
+    for current_text, directories, filenames in os.walk(
+        source, topdown=True, followlinks=False, onerror=raise_walk_error,
+    ):
+        current = Path(current_text)
+        kept_directories = []
+        for directory in sorted(directories):
+            path = current / directory
+            if path.is_symlink():
+                raise ValueError(f"Source snapshot contains a symlinked directory: {path.relative_to(source)}")
+            if directory.lower() in _EXCLUDED_DIRS:
+                excluded_count += 1
+                continue
+            kept_directories.append(directory)
+        directories[:] = kept_directories
+
+        for filename in sorted(filenames):
+            path = current / filename
+            relative = path.relative_to(source)
+            if path.is_symlink():
+                raise ValueError(f"Source snapshot contains a symlinked file: {relative.as_posix()}")
+            if _is_sensitive_file(relative):
+                excluded_count += 1
+                continue
+            metadata = path.stat(follow_symlinks=False)
+            if not stat.S_ISREG(metadata.st_mode):
+                raise ValueError(f"Source snapshot contains a non-regular file: {relative.as_posix()}")
+            if metadata.st_size > _MAX_SINGLE_SOURCE_FILE:
+                raise ValueError(f"Source file exceeds the 50 MB per-file limit: {relative.as_posix()}")
+            total_bytes += metadata.st_size
+            file_count += 1
+            if total_bytes > _MAX_SOURCE_BYTES:
+                raise ValueError("Source snapshot exceeds the 256 MB total size limit.")
+            if file_count > _MAX_SOURCE_FILES:
+                raise ValueError("Source snapshot exceeds the 20,000-file limit.")
+
+            relative_bytes = os.fsencode(relative.as_posix())
+            mode = stat.S_IMODE(metadata.st_mode) & 0o777
+            digest.update(len(relative_bytes).to_bytes(4, "big"))
+            digest.update(relative_bytes)
+            digest.update(mode.to_bytes(4, "big"))
+            digest.update(metadata.st_size.to_bytes(8, "big"))
+
+            target = destination / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            copied_bytes = 0
+            with path.open("rb") as source_file, target.open("xb") as target_file:
+                while True:
+                    chunk = source_file.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    copied_bytes += len(chunk)
+                    if copied_bytes > _MAX_SINGLE_SOURCE_FILE:
+                        raise ValueError(f"Source file grew beyond the per-file limit during snapshot: {relative.as_posix()}")
+                    digest.update(chunk)
+                    target_file.write(chunk)
+            if copied_bytes != metadata.st_size:
+                raise ValueError(f"Source file changed while the snapshot was being staged: {relative.as_posix()}")
+            os.chmod(target, mode)
+
+    return digest.hexdigest(), excluded_count
 
 
 def _labelled_container_ids(docker: str, label: str) -> list[str] | None:
@@ -175,75 +285,87 @@ def run_isolated_build(
 
     run_label = f"com.usc.build-run={uuid.uuid4().hex}"
     logs = bytearray()
+    log_truncated = False
     status = "failed"
     exit_code = None
     cleanup_ok = True
     artifact_exported = False
     execution_started = False
-    docker_argv = [
-        docker, "run", "--pull=never",
-        "--network=none", "--read-only",
-        f"--user={os.getuid()}:{os.getgid()}", "--cap-drop=ALL",
-        "--security-opt=no-new-privileges:true",
-        "--pids-limit=64", "--memory=512m", "--cpus=1.0",
-        f"--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=64m,uid={os.getuid()},gid={os.getgid()},mode=0700",
-        f"--tmpfs=/out:rw,noexec,nosuid,nodev,size=256m,uid={os.getuid()},gid={os.getgid()},mode=0700",
-        f"--label={run_label}",
-        f"--mount=type=bind,src={source},dst=/src,readonly",
-        "--workdir=/src",
-        "--env=HOME=/tmp", "--env=TMPDIR=/tmp",
-        "--env=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-        image, *args,
-    ]
-
     process = None
+    source_snapshot_sha256 = None
+    excluded_source_path_count = 0
     try:
-        process = subprocess.Popen(
-            docker_argv,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            close_fds=True,
-        )
-        execution_started = True
-        assert process.stdout is not None
-        selector = selectors.DefaultSelector()
-        selector.register(process.stdout, selectors.EVENT_READ)
-        deadline = time.monotonic() + timeout_seconds
-        try:
-            while selector.get_map():
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    status = "timed_out"
-                    process.kill()
-                    break
-                for key, _ in selector.select(timeout=min(0.1, remaining)):
-                    chunk = os.read(key.fd, 65536)
-                    if not chunk:
-                        selector.unregister(key.fileobj)
-                        continue
-                    available = max_log_bytes - len(logs)
-                    if len(chunk) > available:
-                        logs.extend(chunk[:available])
-                        status = "output_limit_exceeded"
+        with tempfile.TemporaryDirectory(prefix="usc-build-") as temporary_root:
+            staged_source = Path(temporary_root) / "source"
+            source_snapshot_sha256, excluded_source_path_count = _stage_source_snapshot(source, staged_source)
+            if "," in str(staged_source):
+                raise ValueError("Temporary snapshot path must not contain commas.")
+            docker_argv = [
+                docker, "run", "--pull=never",
+                "--network=none", "--read-only",
+                f"--user={os.getuid()}:{os.getgid()}", "--cap-drop=ALL",
+                "--security-opt=no-new-privileges:true",
+                "--pids-limit=64", "--memory=512m", "--cpus=1.0",
+                f"--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=64m,uid={os.getuid()},gid={os.getgid()},mode=0700",
+                f"--tmpfs=/out:rw,noexec,nosuid,nodev,size=256m,uid={os.getuid()},gid={os.getgid()},mode=0700",
+                f"--label={run_label}",
+                f"--mount=type=bind,src={staged_source},dst=/src,readonly",
+                "--workdir=/src",
+                "--env=HOME=/tmp", "--env=TMPDIR=/tmp",
+                "--env=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                image, *args,
+            ]
+            process = subprocess.Popen(
+                docker_argv,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                close_fds=True,
+            )
+            execution_started = True
+            assert process.stdout is not None
+            selector = selectors.DefaultSelector()
+            selector.register(process.stdout, selectors.EVENT_READ)
+            deadline = time.monotonic() + timeout_seconds
+            try:
+                while selector.get_map():
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        status = "timed_out"
                         process.kill()
                         break
-                    logs.extend(chunk)
-                if status in {"timed_out", "output_limit_exceeded"}:
-                    break
-            exit_code = process.wait(timeout=5)
-            if status not in {"timed_out", "output_limit_exceeded"}:
-                if exit_code == 125:
-                    status = "blocked_isolation_unavailable"
-                    execution_started = False
-                else:
-                    status = "passed" if exit_code == 0 else "failed"
-                    artifact_exported = _export_container_output(docker, run_label, output)
-                    if not artifact_exported:
-                        status = "artifact_export_failed"
-        finally:
-            selector.close()
-            process.stdout.close()
+                    for key, _ in selector.select(timeout=min(0.1, remaining)):
+                        chunk = os.read(key.fd, 65536)
+                        if not chunk:
+                            selector.unregister(key.fileobj)
+                            continue
+                        available = max_log_bytes - len(logs)
+                        if len(chunk) > available:
+                            logs.extend(chunk[:available])
+                            log_truncated = True
+                            status = "output_limit_exceeded"
+                            process.kill()
+                            break
+                        logs.extend(chunk)
+                    if status in {"timed_out", "output_limit_exceeded"}:
+                        break
+                exit_code = process.wait(timeout=5)
+                if status not in {"timed_out", "output_limit_exceeded"}:
+                    if exit_code == 125:
+                        status = "blocked_isolation_unavailable"
+                        execution_started = False
+                    else:
+                        status = "passed" if exit_code == 0 else "failed"
+                        artifact_exported = _export_container_output(docker, run_label, output)
+                        if not artifact_exported:
+                            status = "artifact_export_failed"
+            finally:
+                selector.close()
+                process.stdout.close()
+    except ValueError as exc:
+        status = "blocked_invalid_request"
+        execution_started = False
+        logs.extend(str(exc).encode("utf-8", errors="replace")[:max_log_bytes])
     except (OSError, subprocess.TimeoutExpired) as exc:
         if process is not None and process.poll() is None:
             process.kill()
@@ -251,7 +373,9 @@ def run_isolated_build(
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 pass
-        status = "blocked_isolation_unavailable"
+        status = "blocked_invalid_request" if source_snapshot_sha256 is None else "blocked_isolation_unavailable"
+        if process is None:
+            execution_started = False
         logs.extend(str(exc).encode("utf-8", errors="replace")[:max_log_bytes])
     finally:
         cleanup_ok = _cleanup_labelled_containers(docker, run_label)
@@ -267,11 +391,13 @@ def run_isolated_build(
         "command_executable": args[0],
         "timeout_seconds": timeout_seconds,
         "log_bytes": len(logs),
-        "log_truncated": status == "output_limit_exceeded",
+        "log_truncated": log_truncated,
         "logs": logs.decode("utf-8", errors="replace"),
         "source_read_only": True,
         "output_path": str(output),
         "artifact_exported": artifact_exported,
+        "source_snapshot_sha256": source_snapshot_sha256,
+        "excluded_source_path_count": excluded_source_path_count,
         "network_disabled": True,
         "container_cleanup_confirmed": cleanup_ok,
         "note": "No host environment variables or credentials were forwarded. The image was not pulled; it had to be pre-provisioned locally.",
