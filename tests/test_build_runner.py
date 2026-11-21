@@ -41,6 +41,8 @@ def test_build_requires_explicit_approval_and_does_not_probe_docker(tmp_path, mo
         ("python:latest", ["python", "-m", "pytest"], 30),
         (IMAGE, ["sh", "-c", "echo unsafe"], 30),
         (IMAGE, ["python", "-m", "pytest"], 0),
+        (IMAGE, ["python", "-m", "pytest", "--token=do-not-log-this"], 30),
+        (IMAGE, ["python", "-m", "pytest", "https://user:pass@example.test"], 30),
     ],
 )
 def test_invalid_execution_profiles_are_blocked(tmp_path, image, command, timeout):
@@ -118,6 +120,8 @@ def test_runner_uses_restricted_container_and_reports_success(tmp_path, monkeypa
     def fake_run(argv, **kwargs):
         if argv[1] == "info":
             return subprocess.CompletedProcess(argv, 0, stdout="27.0", stderr="")
+        if argv[1:3] == ["image", "inspect"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="sha256:" + "b" * 64, stderr="")
         if argv[1] == "cp":
             return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
         if argv[1:3] == ["ps", "-aq"]:
@@ -159,6 +163,11 @@ def test_runner_uses_restricted_container_and_reports_success(tmp_path, monkeypa
     assert report["network_disabled"] is True
     assert report["container_cleanup_confirmed"] is True
     assert report["artifact_exported"] is True
+    assert report["docker_image_id"] == "sha256:" + "b" * 64
+    assert report["command_sha256"] and len(report["command_sha256"]) == 64
+    assert report["logs_sha256"] and len(report["logs_sha256"]) == 64
+    assert report["started_at"] and report["finished_at"]
+    assert report["duration_seconds"] >= 0
     assert len(report["source_snapshot_sha256"]) == 64
     assert report["excluded_source_path_count"] >= 3
     assert report["logs"] == "fixture tests passed\\n"
@@ -188,6 +197,8 @@ def test_runner_marks_container_cleanup_failure_as_blocked(tmp_path, monkeypatch
     def fake_run(argv, **kwargs):
         if argv[1] == "info":
             return subprocess.CompletedProcess(argv, 0, stdout="27.0", stderr="")
+        if argv[1:3] == ["image", "inspect"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="sha256:" + "b" * 64, stderr="")
         if argv[1] == "cp":
             return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
         if argv[1:3] == ["ps", "-aq"]:
@@ -251,6 +262,8 @@ def test_runner_kills_container_when_log_limit_is_exceeded(tmp_path, monkeypatch
     def fake_run(argv, **kwargs):
         if argv[1] == "info":
             return subprocess.CompletedProcess(argv, 0, stdout="27.0", stderr="")
+        if argv[1:3] == ["image", "inspect"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="sha256:" + "b" * 64, stderr="")
         if argv[1:3] == ["ps", "-aq"]:
             ps_calls["count"] += 1
             found = "fixture-container" if ps_calls["count"] == 1 else ""
@@ -311,6 +324,8 @@ def test_runner_stops_execution_at_timeout(tmp_path, monkeypatch):
     def fake_run(argv, **kwargs):
         if argv[1] == "info":
             return subprocess.CompletedProcess(argv, 0, stdout="27.0", stderr="")
+        if argv[1:3] == ["image", "inspect"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="sha256:" + "b" * 64, stderr="")
         if argv[1:3] == ["ps", "-aq"]:
             return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
         raise AssertionError(f"Unexpected host command: {argv}")
@@ -319,7 +334,7 @@ def test_runner_stops_execution_at_timeout(tmp_path, monkeypatch):
     monkeypatch.setattr("customizer.build_runner.subprocess.run", fake_run)
     monkeypatch.setattr("customizer.build_runner.subprocess.Popen", FakeProcess)
     monkeypatch.setattr("customizer.build_runner.selectors.DefaultSelector", FakeSelector)
-    clock = iter([100.0, 102.0])
+    clock = iter([100.0, 102.0, 102.0])
     monkeypatch.setattr("customizer.build_runner.time.monotonic", lambda: next(clock))
 
     report = run_isolated_build(
