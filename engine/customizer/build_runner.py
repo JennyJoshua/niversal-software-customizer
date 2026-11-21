@@ -60,28 +60,60 @@ def _validate_request(
         raise ValueError("The host runner must execute as a non-root user.")
     if not os.access(output, os.W_OK | os.X_OK):
         raise ValueError("Output directory must be writable by the non-root host runner.")
+    if any(output.iterdir()):
+        raise ValueError("Output directory must be empty before execution.")
     return source, output, args
 
 
-def _cleanup_labelled_containers(docker: str, label: str) -> bool:
+def _labelled_container_ids(docker: str, label: str) -> list[str] | None:
     try:
         listing = subprocess.run(
             [docker, "ps", "-aq", "--filter", f"label={label}"],
             capture_output=True, text=True, timeout=10, check=False,
         )
         if listing.returncode != 0:
+            return None
+        return listing.stdout.split()
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def _export_container_output(docker: str, label: str, output: Path) -> bool:
+    container_ids = _labelled_container_ids(docker, label)
+    if container_ids is None or len(container_ids) != 1:
+        return False
+    try:
+        copied = subprocess.run(
+            [docker, "cp", f"{container_ids[0]}:/out/.", str(output)],
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+        if copied.returncode != 0:
             return False
-        container_ids = listing.stdout.split()
-        for container_id in container_ids:
+        for root, directories, files in os.walk(output, followlinks=False):
+            for name in directories + files:
+                if (Path(root) / name).is_symlink():
+                    return False
+        return True
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def _cleanup_labelled_containers(docker: str, label: str) -> bool:
+    container_ids = _labelled_container_ids(docker, label)
+    if container_ids is None:
+        return False
+    for container_id in container_ids:
+        try:
             removed = subprocess.run(
                 [docker, "rm", "-f", container_id],
                 capture_output=True, text=True, timeout=10, check=False,
             )
             if removed.returncode != 0:
                 return False
-        return True
-    except (OSError, subprocess.TimeoutExpired):
-        return False
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+    remaining = _labelled_container_ids(docker, label)
+    return remaining == []
 
 
 def run_isolated_build(
@@ -147,15 +179,15 @@ def run_isolated_build(
     exit_code = None
     cleanup_ok = True
     docker_argv = [
-        docker, "run", "--rm", "--pull=never",
+        docker, "run", "--pull=never",
         "--network=none", "--read-only",
         f"--user={os.getuid()}:{os.getgid()}", "--cap-drop=ALL",
         "--security-opt=no-new-privileges:true",
         "--pids-limit=64", "--memory=512m", "--cpus=1.0",
-        "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=64m",
+        f"--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=64m,uid={os.getuid()},gid={os.getgid()},mode=0700",
+        f"--tmpfs=/out:rw,noexec,nosuid,nodev,size=256m,uid={os.getuid()},gid={os.getgid()},mode=0700",
         f"--label={run_label}",
         f"--mount=type=bind,src={source},dst=/src,readonly",
-        f"--mount=type=bind,src={output},dst=/out",
         "--workdir=/src",
         "--env=HOME=/tmp", "--env=TMPDIR=/tmp",
         "--env=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
@@ -198,7 +230,12 @@ def run_isolated_build(
                     break
             exit_code = process.wait(timeout=5)
             if status not in {"timed_out", "output_limit_exceeded"}:
-                status = "passed" if exit_code == 0 else "failed"
+                if exit_code == 125:
+                    status = "blocked_isolation_unavailable"
+                else:
+                    status = "passed" if exit_code == 0 else "failed"
+                    if not _export_container_output(docker, run_label, output):
+                        status = "artifact_export_failed"
         finally:
             selector.close()
             process.stdout.close()
@@ -229,6 +266,7 @@ def run_isolated_build(
         "logs": logs.decode("utf-8", errors="replace"),
         "source_read_only": True,
         "output_path": str(output),
+        "artifact_exported": status in {"passed", "failed"},
         "network_disabled": True,
         "container_cleanup_confirmed": cleanup_ok,
         "note": "No host environment variables or credentials were forwarded. The image was not pulled; it had to be pre-provisioned locally.",
