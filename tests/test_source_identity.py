@@ -120,3 +120,20 @@ def test_staged_snapshot_rejects_new_untracked_file_after_identity_check(tmp_pat
             tmp_path / "snapshot",
             expected_git_blobs=identity["_tracked_blob_sha_by_path"],
         )
+
+
+
+def test_staged_snapshot_normalizes_non_executable_modes_to_git_mode(tmp_path):
+    root = tmp_path / "repo"
+    _committed_repo(root)
+    (root / "app.py").chmod(0o664)
+    identity = inspect_git_source(root)
+    assert identity["source_worktree_clean"] is True
+
+    snapshot = tmp_path / "snapshot"
+    _stage_source_snapshot(
+        root,
+        snapshot,
+        expected_git_blobs=identity["_tracked_blob_sha_by_path"],
+    )
+    assert (snapshot / "app.py").stat().st_mode & 0o777 == 0o644
