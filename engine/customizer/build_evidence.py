@@ -6,7 +6,6 @@ import json
 import os
 import re
 import stat
-import shutil
 import subprocess
 from functools import lru_cache
 from pathlib import Path
@@ -129,9 +128,7 @@ def inspect_git_source(source_path: str | Path) -> dict:
             "source_git_identity_error": reason,
         }
 
-    git = shutil.which("git")
-    if not git:
-        return unavailable("Git is unavailable; exact source revision identity could not be established.")
+    git = "git"
 
     env = os.environ.copy()
     for key in (
