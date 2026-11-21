@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from customizer.build_runner import _stage_source_snapshot, run_isolated_build
+from customizer.build_runner import _probe_toolchain, _stage_source_snapshot, _toolchain_inventory_digest, run_isolated_build
 
 
 IMAGE = "python:3.12-slim@sha256:" + "a" * 64
@@ -598,3 +598,117 @@ def test_runner_cleans_up_after_interrupted_execution_without_mutating_source(tm
     assert killed["value"] is True
     assert removed["value"] is True
     assert after == before
+
+
+
+def test_toolchain_probe_captures_version_in_network_disabled_disposable_container(tmp_path, monkeypatch):
+    captured = []
+
+    class FakeProcess:
+        def __init__(self, argv, **_kwargs):
+            captured.append(argv)
+            read_fd, write_fd = os.pipe()
+            os.write(write_fd, b"Python 3.12.4\\n")
+            os.close(write_fd)
+            self.stdout = os.fdopen(read_fd, "rb")
+            self.returncode = 0
+
+        def poll(self):
+            return self.returncode
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+        def kill(self):
+            self.returncode = -9
+
+    monkeypatch.setattr("customizer.build_runner.subprocess.Popen", FakeProcess)
+    inventory = _probe_toolchain(
+        "/usr/bin/docker", IMAGE, "com.usc.test=toolchain",
+        probes=[("python", ("--version",))],
+    )
+
+    assert inventory == [{
+        "name": "python",
+        "status": "available",
+        "exit_code": 0,
+        "version": "Python 3.12.4",
+        "output_sha256": hashlib.sha256(b"Python 3.12.4\\n").hexdigest(),
+    }]
+    argv = captured[0]
+    assert "--network=none" in argv
+    assert "--read-only" in argv
+    assert "--cap-drop=ALL" in argv
+    assert "--pull=never" in argv
+    assert "--entrypoint" in argv
+    assert "python" in argv
+    assert not any(item.startswith("--mount=") for item in argv)
+    assert _toolchain_inventory_digest(inventory) == hashlib.sha256(
+        __import__("json").dumps(inventory, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def test_toolchain_probe_bounds_output_and_terminates_probe(tmp_path, monkeypatch):
+    killed = {"value": False}
+
+    class FakeProcess:
+        def __init__(self, _argv, **_kwargs):
+            read_fd, write_fd = os.pipe()
+            os.write(write_fd, b"x" * 8192)
+            os.close(write_fd)
+            self.stdout = os.fdopen(read_fd, "rb")
+            self.returncode = None
+
+        def poll(self):
+            return self.returncode
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+        def kill(self):
+            killed["value"] = True
+            self.returncode = -9
+
+    monkeypatch.setattr("customizer.build_runner.subprocess.Popen", FakeProcess)
+    inventory = _probe_toolchain(
+        "/usr/bin/docker", IMAGE, "com.usc.test=toolchain",
+        probes=[("python", ("--version",))],
+        max_output_bytes=1024,
+    )
+
+    assert inventory[0]["status"] == "output_limit_exceeded"
+    assert inventory[0]["exit_code"] == -9
+    assert len(inventory[0]["output_sha256"]) == 64
+    assert killed["value"] is True
+
+
+def test_toolchain_probe_times_out_and_kills_unresponsive_probe(tmp_path, monkeypatch):
+    killed = {"value": False}
+
+    class FakeProcess:
+        def __init__(self, _argv, **_kwargs):
+            self.read_fd, self.write_fd = os.pipe()
+            self.stdout = os.fdopen(self.read_fd, "rb")
+            self.returncode = None
+
+        def poll(self):
+            return self.returncode
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+        def kill(self):
+            killed["value"] = True
+            self.returncode = -9
+            os.close(self.write_fd)
+
+    monkeypatch.setattr("customizer.build_runner.subprocess.Popen", FakeProcess)
+    inventory = _probe_toolchain(
+        "/usr/bin/docker", IMAGE, "com.usc.test=toolchain",
+        probes=[("python", ("--version",))],
+        timeout_seconds=0.01,
+    )
+
+    assert inventory[0]["status"] == "timed_out"
+    assert inventory[0]["exit_code"] == -9
+    assert killed["value"] is True
