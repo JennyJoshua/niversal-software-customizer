@@ -11,6 +11,7 @@ from .licensing import LicenceScanError, scan_licence_evidence
 from .customizations import inspect_customization_registry
 from .configuration import validate_project_branding_configuration
 from .planning import detect_adapters, create_customization_dry_run
+from .web_nextjs import apply_nextjs_branding
 from .sync import SyncPlanError, create_sync_candidate, create_sync_plan, resolve_sync_base
 from .verification import create_sync_verification
 from .verification_snapshot import create_sync_verification_snapshot
@@ -61,6 +62,13 @@ def build_parser() -> argparse.ArgumentParser:
     plan_parser.add_argument("--project-config", required=True, help="Path to project.json configuration.")
     plan_parser.add_argument("--branding-config", required=True, help="Path to branding.json configuration.")
     plan_parser.add_argument("--output", help="Write JSON report outside the source directory.")
+
+    apply_parser = subparsers.add_parser("customize-apply", help="Apply the guarded Next.js branding plan after explicit approval.")
+    apply_parser.add_argument("--path", required=True, help="Customized Next.js project directory.")
+    apply_parser.add_argument("--project-config", required=True, help="Path to project.json configuration.")
+    apply_parser.add_argument("--branding-config", required=True, help="Path to branding.json configuration.")
+    apply_parser.add_argument("--approve", action="store_true", help="Explicitly approve the planned local branding writes.")
+    apply_parser.add_argument("--output", help="Write JSON report outside the source directory.")
 
     sync_parser = subparsers.add_parser(
         "sync-plan", help="Create a read-only three-way upstream synchronization plan."
@@ -191,6 +199,15 @@ def main(argv: list[str] | None = None) -> int:
             )
             _write_report(report, args.output, source_root)
             if report.get("status", "").startswith("blocked_"):
+                return 2
+        elif args.command == "customize-apply":
+            source_root = Path(args.path).expanduser().resolve()
+            report = apply_nextjs_branding(
+                source_root, args.project_config, args.branding_config,
+                approved=args.approve,
+            )
+            _write_report(report, args.output, source_root)
+            if report.get("status", "").startswith("blocked"):
                 return 2
         elif args.command == "sync-plan":
             source_root = Path(args.path).expanduser().resolve()
