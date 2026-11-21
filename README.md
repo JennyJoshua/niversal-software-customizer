@@ -48,6 +48,10 @@ The internal Python API `customizer.build_runner.run_isolated_build` runs an exp
 
 Build evidence is validated against a versioned JSON Schema and records the approved command fingerprint, pinned image reference/local image ID, Docker engine version, timestamps, duration, exit outcome, redacted-log digest, source snapshot fingerprint, cleanup status, and deterministic per-artifact SHA-256 inventory (PR #57). Log redaction is best-effort, not a guarantee that arbitrary secrets are removed. The known-path source exclusions are not a complete secret scanner. The content fingerprint is not yet bound to a Git tree SHA or sync history. Actual in-image toolchain inventory, a user-facing CLI, and provenance manifests remain outstanding. Use synthetic fixtures only.
 
+## Build provenance manifest (in progress)
+
+The detached build provenance contract is documented in [docs/build-provenance-model.md](docs/build-provenance-model.md) and its strict Draft 2020-12 schema is [build-provenance.schema.json](engine/customizer/schemas/build-provenance.schema.json). This is currently a schema/documentation milestone only: manifest construction, evidence digest verification, exact Git-tree-to-staged-snapshot binding, and upstream provenance cross-checks are not yet implemented. No manifest is written to a project automatically.
+
 ## Repository identity
 
 The canonical GitHub repository is [JennyJoshua/universal-software-customizer](https://github.com/JennyJoshua/universal-software-customizer). The former `niversal-software-customizer` name is historical only; use the canonical name in all new links, documents, and handovers. See [repository identity](docs/repository-identity.md).

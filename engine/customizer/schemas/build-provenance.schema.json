@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jennyjoshua.github.io/universal-software-customizer/schemas/build-provenance.schema.json",
+  "title": "USC build provenance manifest",
+  "description": "Detached evidence linking a build report and artifacts to source, upstream, configuration, and execution identities. Not release approval.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "operation", "created_at", "source", "upstream", "customization", "build", "artifacts", "release_authorized"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "operation": { "const": "usc_build_provenance" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository_url", "commit_sha", "tree_sha", "snapshot_sha256", "worktree_clean"],
+      "properties": {
+        "repository_url": { "type": ["string", "null"], "format": "uri", "pattern": "^https://[^/@?#]+/[^?#]+$" },
+        "commit_sha": { "type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$" },
+        "tree_sha": { "type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$" },
+        "snapshot_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "worktree_clean": { "const": true }
+      }
+    },
+    "upstream": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["repository_url", "baseline_sha", "target_sha", "accepted_merge_commit_sha", "provenance_path", "provenance_sha256"],
+          "properties": {
+            "repository_url": { "type": "string", "format": "uri", "pattern": "^https://[^/@?#]+/[^?#]+$" },
+            "baseline_sha": { "type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$" },
+            "target_sha": { "type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$" },
+            "accepted_merge_commit_sha": { "type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$" },
+            "provenance_path": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*\\.\\.)(?!.*\\\\).+$" },
+            "provenance_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          }
+        }
+      ]
+    },
+    "customization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project_id", "registry_sha256", "project_config_sha256", "branding_config_sha256"],
+      "properties": {
+        "project_id": { "type": ["string", "null"], "minLength": 1 },
+        "registry_sha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+        "project_config_sha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+        "branding_config_sha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidence_path", "evidence_sha256", "status", "command_sha256", "image", "docker_image_id", "source_snapshot_sha256", "artifact_inventory_sha256"],
+      "properties": {
+        "evidence_path": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*\\.\\.)(?!.*\\\\).+$" },
+        "evidence_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "status": {
+          "enum": ["passed", "failed", "timed_out", "output_limit_exceeded", "artifact_export_failed", "blocked_approval_required", "blocked_invalid_request", "blocked_isolation_unavailable", "blocked_cleanup_failed"]
+        },
+        "command_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "image": { "type": "string", "pattern": "@sha256:[0-9a-f]{64}$" },
+        "docker_image_id": { "type": "string", "minLength": 1 },
+        "source_snapshot_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "artifact_inventory_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "docker_engine_version": { "type": ["string", "null"] }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "size_bytes", "sha256"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*\\.\\.)(?!.*\\\\).+$" },
+          "size_bytes": { "type": "integer", "minimum": 0 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "release_authorized": { "const": false }
+  }
+}
