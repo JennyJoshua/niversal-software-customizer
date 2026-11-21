@@ -179,6 +179,7 @@ def run_isolated_build(
     exit_code = None
     cleanup_ok = True
     artifact_exported = False
+    execution_started = False
     docker_argv = [
         docker, "run", "--pull=never",
         "--network=none", "--read-only",
@@ -204,6 +205,7 @@ def run_isolated_build(
             stderr=subprocess.STDOUT,
             close_fds=True,
         )
+        execution_started = True
         assert process.stdout is not None
         selector = selectors.DefaultSelector()
         selector.register(process.stdout, selectors.EVENT_READ)
@@ -233,6 +235,7 @@ def run_isolated_build(
             if status not in {"timed_out", "output_limit_exceeded"}:
                 if exit_code == 125:
                     status = "blocked_isolation_unavailable"
+                    execution_started = False
                 else:
                     status = "passed" if exit_code == 0 else "failed"
                     artifact_exported = _export_container_output(docker, run_label, output)
@@ -258,7 +261,7 @@ def run_isolated_build(
     return {
         "operation": "isolated_build",
         "status": status,
-        "executed": status not in {"blocked_isolation_unavailable"},
+        "executed": execution_started,
         "exit_code": exit_code,
         "image": image,
         "command_executable": args[0],
