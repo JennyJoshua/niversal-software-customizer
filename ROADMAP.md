@@ -59,7 +59,8 @@
 ## Phase 6 — Isolated build and provenance
 
 - [x] Add the initial Docker-only isolated build runner API: explicit approval, digest-pinned pre-provisioned image, no network, non-root execution, read-only source, bounded tmpfs output, resource/time/log limits, and cleanup verification (PR #55). This is not yet a customer-ready workflow or CLI.
-- [ ] Stage a sanitized immutable source snapshot; exclude secrets and bind execution to an exact Git tree SHA.
+- [x] Stage a bounded immutable source snapshot, exclude VCS/USC metadata and known credential paths, reject symlinks/non-regular files, strip privileged mode bits, and compute a deterministic USC SHA-256 content fingerprint (PR #56).
+- [ ] Complete source-secret review controls and bind the snapshot fingerprint to an exact Git tree SHA and sync history before customer use.
 - [ ] Add a reviewed command-profile/CLI approval workflow and capture tool versions, timestamps, exit outcomes, and bounded logs.
 - [ ] Hash outputs and bind evidence to the exact source tree, image digest, and command profile.
 - [ ] Generate and validate a provenance manifest including upstream baseline and sync history.
