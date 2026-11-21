@@ -92,6 +92,9 @@ def _replace_marked_block(text: str, marker_pair: tuple[str, str], replacement: 
 def _validate_svg(data: bytes) -> None:
     if len(data) > 500_000:
         raise ValueError("Logo SVG exceeds the 500 KB limit.")
+    upper_data = data.upper()
+    if b"<!DOCTYPE" in upper_data or b"<!ENTITY" in upper_data:
+        raise ValueError("Logo SVG document types and entity declarations are not allowed.")
     try:
         root = ET.fromstring(data)
     except ET.ParseError as exc:
@@ -102,6 +105,12 @@ def _validate_svg(data: bytes) -> None:
         tag = element.tag.rsplit("}", 1)[-1].lower()
         if tag in {"script", "foreignobject"}:
             raise ValueError("Logo SVG contains an unsafe element.")
+        text_content = (element.text or "").lower()
+        if "@import" in text_content:
+            raise ValueError("Logo SVG stylesheet imports are not allowed.")
+        for reference in re.findall(r"url\(\s*['\"]?([^'\")]+)", text_content):
+            if not reference.strip().startswith("#"):
+                raise ValueError("Logo SVG external style references are not allowed.")
         for key, value in element.attrib.items():
             name = key.rsplit("}", 1)[-1].lower()
             lowered = value.strip().lower()
