@@ -17,7 +17,7 @@ _MAX_ARTIFACT_FILES = 20_000
 _LOG_REDACTIONS = (
     (re.compile(r"(?i)(authorization\s*[:=]\s*bearer\s+)[^\s,;]+"), r"\1[REDACTED]"),
     (re.compile(r"(?i)(\b(?:password|token|secret|api[_-]?key|credential)[\w-]*\s*[:=]\s*)([^\s,;]+)"), r"\1[REDACTED]"),
-    (re.compile(r"(?i)([\\"']?(?:password|token|secret|api[_-]?key|credential|authorization)[\\"']?\s*:\s*[\\"']?)([^\\"'\s,}]+)"), r"\1[REDACTED]"),
+    (re.compile(r"""(?i)(["']?(?:password|token|secret|api[_-]?key|credential|authorization)["']?\s*:\s*["']?)([^"'\s,}]+)"""), r"\1[REDACTED]"),
     (re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b"), "[REDACTED_GITHUB_TOKEN]"),
     (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "[REDACTED_AWS_ACCESS_KEY]"),
     (re.compile(r"(://)[^/@:\s]+:[^/@\s]+@"), r"\1[REDACTED]@"),
