@@ -213,10 +213,13 @@ def inspect_git_source(source_path: str | Path) -> dict:
             paths.append(path_bytes)
 
         if paths:
-            hashed = run_git("hash-object", "--no-filters", "--stdin-paths", "-z", input_bytes=b"\x00".join(paths) + b"\x00")
-            if hashed.returncode != 0:
-                return unavailable("Raw tracked source contents could not be compared with Git blobs.")
-            actual_blobs = hashed.stdout.splitlines()
+            actual_blobs: list[bytes] = []
+            for offset in range(0, len(paths), 128):
+                batch = [os.fsdecode(item) for item in paths[offset:offset + 128]]
+                hashed = run_git("hash-object", "--no-filters", "--", *batch)
+                if hashed.returncode != 0:
+                    return unavailable("Raw tracked source contents could not be compared with Git blobs.")
+                actual_blobs.extend(hashed.stdout.splitlines())
             if actual_blobs != expected_blobs:
                 return unavailable("Raw tracked source contents differ from the exact Git tree (including filter/smudge differences).")
 
