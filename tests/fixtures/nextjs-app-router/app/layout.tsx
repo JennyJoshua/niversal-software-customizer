@@ -1,5 +1,5 @@
 /* USC:branding:metadata:start */
-export const metadata: Metadata = {
+export const metadata = {
   title: "Fixture Product",
   description: "Fixture description",
 };
