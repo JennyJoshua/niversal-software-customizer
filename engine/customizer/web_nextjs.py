@@ -377,7 +377,7 @@ def apply_nextjs_branding(
                     staged.pop(relative, None)
                 else:
                     os.replace(staged[relative], current_target)
-                    committed.append((relative, current_target, original, updated))
+                    committed.append((relative, current_target, original, updated, modes[relative]))
                     changed.append({"path": relative, "sha256": _digest(updated)})
                     staged.pop(relative, None)
         except Exception as exc:
@@ -396,6 +396,7 @@ def apply_nextjs_branding(
                                 handle.write(original)
                                 handle.flush()
                                 os.fsync(handle.fileno())
+                            os.chmod(temporary, mode)
                             os.replace(temporary, safe_target)
                         finally:
                             if os.path.exists(temporary):
