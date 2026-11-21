@@ -48,5 +48,6 @@ The source Git tree identity and staged snapshot digest are separate values. The
 
 - The manifest is not digitally signed and does not prove who produced the build evidence. SHA-256 values provide integrity comparisons, not producer authenticity.
 - The source-secret exclusion rules and log redaction remain best-effort controls, not a complete secret scanner.
-- Actual in-image toolchain inventory is implemented on the Phase 6 toolchain branch and awaits CI review; a user-facing CLI and reviewed command-profile approval workflow remain outstanding.
+- A fixed in-image toolchain inventory is implemented and merged (PR #63). It probes a fixed executable list in disposable, network-disabled, read-only, resource-bounded containers and records bounded version output plus a deterministic digest. Synthetic tests do not replace live Docker validation.
+- A user-facing CLI and reviewed command-profile approval workflow remain outstanding.
 - Use synthetic fixtures only until the remaining Phase 6 safeguards and reviewed command-profile workflow are complete.
