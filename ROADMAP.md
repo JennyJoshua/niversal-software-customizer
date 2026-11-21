@@ -42,18 +42,18 @@
 
 - [x] Define versioned project and branding JSON schemas (PR #43); validate both Draft 2020-12 schema documents and example files, with negative-case coverage (PR #44).
 - [x] Validate names, colors, URLs, assets, and safe paths through strict schema checks plus read-only runtime asset containment/symlink/protected-path validation (`usc config-check`, PR #46).
-- [x] Create read-only adapter detection and deterministic dry-run plan interfaces (`usc adapter-detect` and `usc customize-plan`, PR #48). Candidate labels remain explicitly `detected_not_implemented`; no branding is applied.
+- [x] Create read-only adapter detection and deterministic dry-run plan interfaces (`usc adapter-detect` and `usc customize-plan`, PR #48). The Next.js candidate is now labelled `implemented`; other detected candidates remain `detected_not_implemented`. Adapter-specific checks and rights review still gate use.
 - [x] Test invalid and unsafe configuration, including schema violations, traversal, symlink escapes, missing assets, reserved metadata, and protected notice paths (PRs #44 and #46).
-- [ ] Implement and test write-operation enforcement so future adapters cannot modify upstream sync metadata, licence/notice/attribution files, or other protected paths. Current config validation rejects these as asset targets; adapter write enforcement is still pending.
+- [ ] Complete the remaining cross-adapter write-policy specification; the first Next.js adapter now enforces fixed USC-marked files and USC-owned asset targets, with each future adapter requiring its own enforcement and tests.
 
 ## Phase 5 — First web adapter
 
-- [ ] Select a permissively licensed test fixture.
-- [ ] Support only explicitly detected branding locations.
-- [ ] Implement product name, logo/favicon, and theme changes where supported.
-- [ ] Preserve attribution and upstream notices.
+- [x] Add a minimal MIT-licensed Next.js App Router fixture for adapter tests.
+- [x] Support only explicitly detected, USC-marked Next.js App Router branding locations.
+- [x] Implement product name, logo/favicon, and theme changes in the guarded Next.js adapter.
+- [x] Keep licence/notice files outside the adapter write allowlist and test that they remain byte-for-byte unchanged.
 - [ ] Generate diff and change report.
-- [ ] Test unrelated files remain unchanged.
+- [x] Test unrelated files, the MIT licence, NOTICE, and USC upstream-baseline metadata remain unchanged.
 - [ ] Test that later upstream updates preserve branding changes or stop on conflicts.
 
 ## Phase 6 — Isolated build and provenance

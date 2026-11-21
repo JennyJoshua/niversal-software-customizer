@@ -34,7 +34,7 @@ def detect_adapters(repository: str | Path) -> dict[str, Any]:
         {
             "adapter_id": _FAMILY_ADAPTERS[family],
             "technology_family": family,
-            "status": "detected_not_implemented",
+            "status": "implemented" if family == "nextjs" else "detected_not_implemented",
         }
         for family in families
         if family in _FAMILY_ADAPTERS
@@ -47,7 +47,7 @@ def detect_adapters(repository: str | Path) -> dict[str, Any]:
         "candidates": candidates,
         "read_only": True,
         "code_executed": False,
-        "note": "Detection is heuristic metadata analysis. Candidate labels do not mean an adapter is implemented or approved.",
+        "note": "Detection is heuristic metadata analysis. An implemented label means a guarded adapter exists; it does not mean the project passed its adapter-specific checks or rights review.",
     }
 
 
@@ -64,6 +64,10 @@ def create_customization_dry_run(
     errors = sorted(validation["errors"])
     requested_adapter = validation.get("adapter")
     candidate_ids = [item["adapter_id"] for item in detection["candidates"]]
+
+    if validation["status"] == "valid" and requested_adapter == "web-nextjs" and "web-nextjs" in candidate_ids:
+        from .web_nextjs import create_nextjs_branding_plan
+        return create_nextjs_branding_plan(repository, project_config, branding_config)
 
     if validation["status"] != "valid":
         status = "blocked_invalid_configuration"

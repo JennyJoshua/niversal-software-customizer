@@ -35,7 +35,7 @@ def test_adapter_detection_is_deterministic_and_never_executes_source(tmp_path):
     assert first["status"] == "candidates_detected"
     assert first["technology_families"] == ["nextjs", "react"]
     assert first["candidates"] == [
-        {"adapter_id": "web-nextjs", "technology_family": "nextjs", "status": "detected_not_implemented"},
+        {"adapter_id": "web-nextjs", "technology_family": "nextjs", "status": "implemented"},
         {"adapter_id": "web-react", "technology_family": "react", "status": "detected_not_implemented"},
     ]
     assert first["read_only"] is True

@@ -1,0 +1,8 @@
+/* USC:branding:theme:start */
+:root {
+  --usc-primary: #111111;
+  --usc-secondary: #EEEEEE;
+}
+/* USC:branding:theme:end */
+
+body { color: var(--usc-primary); background: var(--usc-secondary); }
