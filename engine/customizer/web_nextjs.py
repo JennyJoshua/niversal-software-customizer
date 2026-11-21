@@ -192,7 +192,7 @@ def _build_plan(
     favicon_path = visual.get("favicon_path")
     logo_path = visual.get("logo_path")
     metadata_lines = [
-        "export const metadata: Metadata = {",
+        "export const metadata = {",
         f"  title: {json.dumps(product_name, ensure_ascii=False)},",
         f"  description: {json.dumps(tagline, ensure_ascii=False)},",
     ]

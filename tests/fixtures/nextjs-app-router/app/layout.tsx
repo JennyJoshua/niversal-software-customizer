@@ -1,5 +1,3 @@
-import type { Metadata } from "next";
-
 /* USC:branding:metadata:start */
 export const metadata: Metadata = {
   title: "Fixture Product",
