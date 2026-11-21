@@ -54,7 +54,7 @@
     "build": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["evidence_path", "evidence_sha256", "status", "command_sha256", "image", "docker_image_id", "source_snapshot_sha256", "artifact_inventory_sha256"],
+      "required": ["evidence_path", "evidence_sha256", "status", "command_sha256", "image", "docker_image_id", "source_snapshot_sha256", "artifact_inventory_sha256", "toolchain_inventory_sha256"],
       "properties": {
         "evidence_path": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*\\.\\.)(?!.*\\\\).+$" },
         "evidence_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
@@ -66,7 +66,8 @@
         "docker_image_id": { "type": "string", "minLength": 1 },
         "source_snapshot_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
         "artifact_inventory_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-        "docker_engine_version": { "type": ["string", "null"] }
+        "docker_engine_version": { "type": ["string", "null"] },
+        "toolchain_inventory_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
       }
     },
     "artifacts": {
