@@ -56,6 +56,6 @@ Do not pass secrets in command arguments or source files. A mounted source tree 
 
 ## Current limitations
 
-This is an initial local Docker runner, not yet a complete CI orchestration or provenance system. It does not yet stage a secret-filtered source snapshot, compute/bind a Git tree SHA, capture a complete toolchain inventory, hash artifacts, validate a provenance manifest, or provide a CLI command. Those are subsequent Phase 6 batches. Use synthetic fixtures only until those controls and failure tests are complete.
+This is an initial local Docker runner, not yet a complete CI orchestration or provenance system. It stages a bounded source snapshot with known-path secret exclusions and a USC SHA-256 content fingerprint, but the denylist is not a complete secret scanner and the fingerprint is not yet bound to a Git tree SHA or sync provenance. It also does not yet capture a complete toolchain inventory, hash artifacts, validate a provenance manifest, or provide a CLI command. Those are subsequent Phase 6 batches. Use synthetic fixtures only until those controls and failure tests are complete.
 
 The runner is not a guarantee against container-runtime vulnerabilities or malicious build code. The snapshot fingerprint is a USC content digest, not yet a Git tree SHA or a provenance attestation; later Phase 6 work must bind it to repository revision and sync history. Use a patched Docker daemon and trusted, digest-pinned images. Never expose Docker socket or credentials inside the build container.
