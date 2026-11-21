@@ -390,7 +390,13 @@ def run_isolated_build(
         with tempfile.TemporaryDirectory(prefix="usc-build-") as temporary_root:
             staged_source = Path(temporary_root) / "source"
             source_git_identity = inspect_git_source(source)
-            source_snapshot_sha256, excluded_source_path_count = _stage_source_snapshot(source, staged_source)
+            expected_git_blobs = (
+                source_git_identity.get("_tracked_blob_sha_by_path")
+                if source_git_identity["source_worktree_clean"] else None
+            )
+            source_snapshot_sha256, excluded_source_path_count = _stage_source_snapshot(
+                source, staged_source, expected_git_blobs=expected_git_blobs,
+            )
             if "," in str(staged_source):
                 raise ValueError("Temporary snapshot path must not contain commas.")
             docker_argv = [
