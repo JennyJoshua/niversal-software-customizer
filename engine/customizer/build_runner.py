@@ -22,7 +22,7 @@ _PINNED_IMAGE = re.compile(r"^[^\s@]+@sha256:[0-9a-f]{64}$")
 _SHELLS = {"sh", "bash", "dash", "zsh", "fish", "cmd", "powershell", "pwsh"}
 _MAX_TIMEOUT = 3600
 _MAX_LOG_BYTES = 1_048_576
-_SECRET_ARG_PATTERN = re.compile(r"(?i)(?:password|token|secret|api[_-]?key|credential|authorization)[\\w-]*\\s*[:=]")
+_SECRET_ARG_PATTERN = re.compile(r"(?i)(?:password|token|secret|api[_-]?key|credential|authorization)[\w-]*\s*[:=]")
 _SECRET_FLAGS = {
     "--password", "--token", "--secret", "--api-key", "--apikey",
     "--credential", "--authorization", "--auth-token",
@@ -65,7 +65,7 @@ def _validate_request(
         raise ValueError("Shell interpreters are not accepted; provide an executable and arguments directly.")
     for argument in args:
         lowered = argument.lower()
-        if lowered in _SECRET_FLAGS or _SECRET_ARG_PATTERN.search(argument) or re.search(r"(?i)://[^/@:\\s]+:[^/@\\s]+@", argument):
+        if lowered in _SECRET_FLAGS or _SECRET_ARG_PATTERN.search(argument) or re.search(r"(?i)://[^/@:\s]+:[^/@\s]+@", argument):
             raise ValueError("Build command arguments must not contain passwords, tokens, credentials, or authenticated URLs.")
     if not isinstance(timeout_seconds, int) or isinstance(timeout_seconds, bool) or not 1 <= timeout_seconds <= _MAX_TIMEOUT:
         raise ValueError(f"timeout_seconds must be between 1 and {_MAX_TIMEOUT}.")
