@@ -189,7 +189,7 @@ def inspect_git_source(source_path: str | Path) -> dict:
             return unavailable("Tracked source file inventory could not be read.")
         expected_blobs: list[bytes] = []
         paths: list[bytes] = []
-        for record in listing.stdout.split(b"\\x00"):
+        for record in listing.stdout.split(b"\x00"):
             if not record:
                 continue
             try:
@@ -213,7 +213,7 @@ def inspect_git_source(source_path: str | Path) -> dict:
             paths.append(path_bytes)
 
         if paths:
-            hashed = run_git("hash-object", "--no-filters", "--stdin-paths", "-z", input_bytes=b"\\x00".join(paths) + b"\\x00")
+            hashed = run_git("hash-object", "--no-filters", "--stdin-paths", "-z", input_bytes=b"\x00".join(paths) + b"\x00")
             if hashed.returncode != 0:
                 return unavailable("Raw tracked source contents could not be compared with Git blobs.")
             actual_blobs = hashed.stdout.splitlines()
