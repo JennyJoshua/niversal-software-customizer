@@ -228,6 +228,10 @@ def inspect_git_source(source_path: str | Path) -> dict:
             "source_git_tree_sha": tree_sha,
             "source_worktree_clean": True,
             "source_git_identity_error": None,
+            "_tracked_blob_sha_by_path": {
+                os.fsdecode(path): os.fsdecode(blob_sha)
+                for path, blob_sha in zip(paths, expected_blobs)
+            },
         }
     except RuntimeError as exc:
         return unavailable(str(exc))
