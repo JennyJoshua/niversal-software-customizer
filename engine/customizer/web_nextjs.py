@@ -32,6 +32,8 @@ def _digest(data: bytes) -> str:
 def _unified_diff(relative: str, original: bytes | None, updated: bytes) -> tuple[str | None, str]:
     """Return a deterministic text diff; binary or oversized content is explicitly marked."""
     old_bytes = original or b""
+    if b"\\x00" in old_bytes or b"\\x00" in updated:
+        return None, "binary"
     try:
         old_text = old_bytes.decode("utf-8")
         new_text = updated.decode("utf-8")
