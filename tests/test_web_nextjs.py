@@ -235,7 +235,7 @@ def test_apply_rolls_back_earlier_file_writes_when_a_later_write_fails(tmp_path,
         return real_replace(source_path, target_path)
 
     monkeypatch.setattr(adapter.os, "replace", fail_second_replace)
-    report = apply_nextjs_branding(source, project, branding, approved=True)
+    report = apply_approved(source, project, branding)
 
     assert report["status"] == "blocked_unsafe_or_unsupported"
     assert snapshot(source) == before
@@ -248,7 +248,7 @@ def test_apply_preserves_existing_file_permissions(tmp_path):
     target = source / "app" / "layout.tsx"
     target.chmod(0o640)
 
-    report = apply_nextjs_branding(source, project, branding, approved=True)
+    report = apply_approved(source, project, branding)
 
     assert report["status"] == "applied"
     assert stat.S_IMODE(target.stat().st_mode) == 0o640
