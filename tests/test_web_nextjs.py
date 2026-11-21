@@ -117,7 +117,7 @@ def test_apply_changes_only_allowlisted_branding_surfaces(tmp_path):
     assert "My PNG Product" in (source / "app" / "layout.tsx").read_text(encoding="utf-8")
     assert "A locally customized product" in (source / "app" / "layout.tsx").read_text(encoding="utf-8")
     assert "--usc-primary: #123456" in (source / "app" / "globals.css").read_text(encoding="utf-8")
-    assert "alt=\\"My PNG Product\\"" in (source / "app" / "page.tsx").read_text(encoding="utf-8")
+    assert 'alt="My PNG Product"' in (source / "app" / "page.tsx").read_text(encoding="utf-8")
     after = snapshot(source)
     changed = {path for path in before if before[path] != after[path]}
     assert changed == {
