@@ -58,10 +58,12 @@
 
 ## Phase 6 — Isolated build and provenance
 
-- [ ] Run fixture tests/builds in disposable environments.
-- [ ] Capture tool versions, logs, and outcomes.
-- [ ] Generate provenance manifest including upstream baseline and sync history.
-- [ ] Produce artifacts without automatic public release.
+- [x] Add the initial Docker-only isolated build runner API: explicit approval, digest-pinned pre-provisioned image, no network, non-root execution, read-only source, bounded tmpfs output, resource/time/log limits, and cleanup verification (PR #55). This is not yet a customer-ready workflow or CLI.
+- [ ] Stage a sanitized immutable source snapshot; exclude secrets and bind execution to an exact Git tree SHA.
+- [ ] Add a reviewed command-profile/CLI approval workflow and capture tool versions, timestamps, exit outcomes, and bounded logs.
+- [ ] Hash outputs and bind evidence to the exact source tree, image digest, and command profile.
+- [ ] Generate and validate a provenance manifest including upstream baseline and sync history.
+- [ ] Produce artifacts without automatic public release; validate output paths, symlinks, and size limits.
 
 ## Phase 7 — Additional adapters
 
