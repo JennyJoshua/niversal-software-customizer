@@ -42,9 +42,9 @@
 
 - [x] Define versioned project and branding JSON schemas (PR #43); validate both Draft 2020-12 schema documents and example files, with negative-case coverage (PR #44).
 - [x] Validate names, colors, URLs, assets, and safe paths through strict schema checks plus read-only runtime asset containment/symlink/protected-path validation (`usc config-check`, PR #46).
-- [ ] Create adapter detection and deterministic dry-run plan interfaces.
+- [x] Create read-only adapter detection and deterministic dry-run plan interfaces (`usc adapter-detect` and `usc customize-plan`, PR #48). Candidate labels remain explicitly `detected_not_implemented`; no branding is applied.
 - [x] Test invalid and unsafe configuration, including schema violations, traversal, symlink escapes, missing assets, reserved metadata, and protected notice paths (PRs #44 and #46).
-- [ ] Confirm future branding application cannot modify upstream sync metadata or protected notices. `usc config-check` currently rejects these as asset targets; write-operation enforcement remains pending because no branding application is implemented.
+- [ ] Implement and test write-operation enforcement so future adapters cannot modify upstream sync metadata, licence/notice/attribution files, or other protected paths. Current config validation rejects these as asset targets; adapter write enforcement is still pending.
 
 ## Phase 5 — First web adapter
 
