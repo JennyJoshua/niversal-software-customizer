@@ -310,6 +310,18 @@ def create_build_provenance_manifest(
     if not isinstance(report, dict):
         raise ValueError("Build evidence document root must be a JSON object.")
     validate_build_evidence(report)
+    required_evidence_fields = (
+        "command_sha256", "image", "docker_image_id",
+        "source_snapshot_sha256", "source_git_commit_sha",
+        "source_git_tree_sha", "source_worktree_clean",
+        "source_git_identity_error", "excluded_source_path_count",
+        "artifact_inventory", "artifact_inventory_sha256",
+    )
+    missing_fields = [key for key in required_evidence_fields if key not in report]
+    if missing_fields:
+        raise ValueError("Build evidence is missing provenance fields: " + ", ".join(missing_fields))
+    if report["source_git_identity_error"] is not None:
+        raise ValueError("Build evidence reports a source Git identity error.")
 
     identity = inspect_git_source(root)
     if identity["source_worktree_clean"] is not True:
