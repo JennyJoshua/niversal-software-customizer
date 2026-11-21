@@ -59,8 +59,8 @@ The read-only customize-plan command emits a deterministic JSON review report. E
 
 Save and inspect the report before applying it:
 
-\`\`\`bash
+```bash
 usc customize-plan --path ./project --project-config ./project.json --branding-config ./branding.json --output ./reviewed-plan.json
-\`\`\`
+```
 
 The customize-apply command requires that exact reviewed report via --plan-report, plus explicit --approve. The resulting JSON application report includes the per-file change report and hashes for applied files. If configuration, source files, or targets changed after review, application blocks and requires a fresh plan.

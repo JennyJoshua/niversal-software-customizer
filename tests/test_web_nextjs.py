@@ -6,7 +6,7 @@ from pathlib import Path
 
 from customizer.cli import main
 
-from customizer.web_nextjs import apply_nextjs_branding, create_nextjs_branding_plan
+from customizer.web_nextjs import _unified_diff, apply_nextjs_branding, create_nextjs_branding_plan
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -322,3 +322,10 @@ def test_apply_returns_the_reviewed_change_report(tmp_path):
     assert len(result["change_report"]) == len(reviewed_plan["planned_changes"])
     assert all(item["status"] == "applied" for item in result["change_report"])
     assert {item["path"] for item in result["change_report"]} == set(reviewed_plan["write_allowlist"])
+
+
+def test_unified_diff_marks_oversized_text_instead_of_emitting_it():
+    diff, diff_format = _unified_diff("large.txt", b"a" * 100_000, b"b" * 100_000)
+
+    assert diff is None
+    assert diff_format == "omitted_size_limit"
