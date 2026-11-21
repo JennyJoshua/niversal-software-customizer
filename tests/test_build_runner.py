@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import subprocess
 from pathlib import Path
@@ -87,6 +88,10 @@ def test_runner_uses_restricted_container_and_reports_success(tmp_path, monkeypa
     (source / ".git" / "config").write_text("[remote]", encoding="utf-8")
     (source / ".usc").mkdir()
     (source / ".usc" / "upstream-baseline.json").write_text("{}", encoding="utf-8")
+    source_before = {
+        path.relative_to(source).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in source.rglob("*") if path.is_file()
+    }
     captured = {}
 
     class FakeProcess:
@@ -177,6 +182,11 @@ def test_runner_uses_restricted_container_and_reports_success(tmp_path, monkeypa
     assert report["source_git_identity_error"]
     assert report["excluded_source_path_count"] >= 3
     assert report["logs"] == "fixture tests passed\\n"
+    source_after = {
+        path.relative_to(source).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in source.rglob("*") if path.is_file()
+    }
+    assert source_after == source_before
 
 
 def test_runner_marks_container_cleanup_failure_as_blocked(tmp_path, monkeypatch):
@@ -398,3 +408,167 @@ def test_source_snapshot_rejects_symlinks(tmp_path):
     (source / "linked.txt").symlink_to(outside)
     with pytest.raises(ValueError, match="symlinked file"):
         _stage_source_snapshot(source, tmp_path / "snapshot")
+
+
+
+@pytest.mark.parametrize(("exit_code", "expected_status"), [(127, "failed"), (23, "failed")])
+def test_runner_records_missing_command_and_nonzero_exit_without_source_mutation(
+    tmp_path, monkeypatch, exit_code, expected_status,
+):
+    source, output = _paths(tmp_path)
+    (source / "app.py").write_text("synthetic source\\n", encoding="utf-8")
+    (source / ".usc").mkdir()
+    baseline = source / ".usc" / "upstream-baseline.json"
+    baseline.write_text('{"baseline":"fixture"}', encoding="utf-8")
+    before = {
+        path.relative_to(source).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in source.rglob("*") if path.is_file()
+    }
+
+    class FakeProcess:
+        def __init__(self, _argv, **_kwargs):
+            read_fd, write_fd = os.pipe()
+            message = b"command not found\\n" if exit_code == 127 else b"fixture test failed\\n"
+            os.write(write_fd, message)
+            os.close(write_fd)
+            self.stdout = os.fdopen(read_fd, "rb")
+            self.returncode = exit_code
+
+        def poll(self):
+            return self.returncode
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+        def kill(self):
+            self.returncode = -9
+
+    ps_calls = {"count": 0}
+
+    def fake_run(argv, **kwargs):
+        if "-C" in argv:
+            return subprocess.CompletedProcess(argv, 128, stdout=b"", stderr=b"not a Git repository")
+        if argv[1] == "info":
+            return subprocess.CompletedProcess(argv, 0, stdout="27.0", stderr="")
+        if argv[1:3] == ["image", "inspect"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="sha256:" + "b" * 64, stderr="")
+        if argv[1] == "cp":
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+        if argv[1:3] == ["ps", "-aq"]:
+            ps_calls["count"] += 1
+            return subprocess.CompletedProcess(
+                argv, 0, stdout="fixture-container" if ps_calls["count"] == 1 else "", stderr=""
+            )
+        if argv[1:3] == ["rm", "-f"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+        raise AssertionError(f"Unexpected host command: {argv}")
+
+    monkeypatch.setattr("customizer.build_runner.shutil.which", lambda _name: "/usr/bin/docker")
+    monkeypatch.setattr("customizer.build_runner.subprocess.run", fake_run)
+    monkeypatch.setattr("customizer.build_runner.subprocess.Popen", FakeProcess)
+
+    report = run_isolated_build(
+        source, output, image=IMAGE, command=["missing-build-tool"],
+        approved=True,
+    )
+    after = {
+        path.relative_to(source).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in source.rglob("*") if path.is_file()
+    }
+    assert report["status"] == expected_status
+    assert report["exit_code"] == exit_code
+    assert report["container_cleanup_confirmed"] is True
+    assert after == before
+
+
+def test_runner_rejects_symlinked_source_directories(tmp_path):
+    source = tmp_path / "source"
+    source.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("outside source", encoding="utf-8")
+    (source / "linked-directory").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="symlinked directory"):
+        _stage_source_snapshot(source, tmp_path / "snapshot")
+
+
+def test_runner_cleans_up_after_interrupted_execution_without_mutating_source(tmp_path, monkeypatch):
+    import io
+
+    source, output = _paths(tmp_path)
+    (source / "app.py").write_text("synthetic source\\n", encoding="utf-8")
+    (source / ".usc").mkdir()
+    baseline = source / ".usc" / "upstream-baseline.json"
+    baseline.write_text('{"baseline":"fixture"}', encoding="utf-8")
+    before = {
+        path.relative_to(source).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in source.rglob("*") if path.is_file()
+    }
+    killed = {"value": False}
+    removed = {"value": False}
+
+    class FakeSelector:
+        def register(self, *_args, **_kwargs):
+            return None
+
+        def get_map(self):
+            return {1: object()}
+
+        def select(self, timeout=None):
+            raise KeyboardInterrupt()
+
+        def close(self):
+            return None
+
+    class FakeProcess:
+        def __init__(self, _argv, **_kwargs):
+            self.stdout = io.BytesIO()
+            self.returncode = None
+
+        def poll(self):
+            return self.returncode
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+        def kill(self):
+            killed["value"] = True
+            self.returncode = -9
+
+    ps_calls = {"count": 0}
+
+    def fake_run(argv, **kwargs):
+        if "-C" in argv:
+            return subprocess.CompletedProcess(argv, 128, stdout=b"", stderr=b"not a Git repository")
+        if argv[1] == "info":
+            return subprocess.CompletedProcess(argv, 0, stdout="27.0", stderr="")
+        if argv[1:3] == ["image", "inspect"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="sha256:" + "b" * 64, stderr="")
+        if argv[1:3] == ["ps", "-aq"]:
+            ps_calls["count"] += 1
+            found = "fixture-container" if ps_calls["count"] == 1 else ""
+            return subprocess.CompletedProcess(argv, 0, stdout=found, stderr="")
+        if argv[1:3] == ["rm", "-f"]:
+            removed["value"] = True
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+        raise AssertionError(f"Unexpected host command: {argv}")
+
+    monkeypatch.setattr("customizer.build_runner.shutil.which", lambda _name: "/usr/bin/docker")
+    monkeypatch.setattr("customizer.build_runner.subprocess.run", fake_run)
+    monkeypatch.setattr("customizer.build_runner.subprocess.Popen", FakeProcess)
+    monkeypatch.setattr("customizer.build_runner.selectors.DefaultSelector", FakeSelector)
+
+    with pytest.raises(KeyboardInterrupt):
+        run_isolated_build(
+            source, output, image=IMAGE, command=["python", "-m", "pytest"],
+            approved=True,
+        )
+
+    after = {
+        path.relative_to(source).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in source.rglob("*") if path.is_file()
+    }
+    assert killed["value"] is True
+    assert removed["value"] is True
+    assert after == before
