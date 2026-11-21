@@ -13,13 +13,13 @@ The runner requires all of the following:
 - Explicit approval of the command and image before execution.
 - An image reference pinned by sha256 digest and already present locally (--pull=never); USC does not pull images during a build.
 - Direct argv execution; shell interpreters and shell command strings are rejected.
-- A disposable container with --network=none, read-only root filesystem, read-only source mount, and one dedicated writable output mount.
+- A disposable container with --network=none, read-only root filesystem, read-only source mount, and a dedicated writable output tmpfs capped at 256 MB. Successful or failed command output is copied from the stopped container into an initially empty host output directory before the container is removed.
 - Non-root UID/GID, all Linux capabilities dropped, no-new-privileges, a PID limit, memory and CPU limits, and a small non-executable temporary filesystem.
 - A sanitized environment containing only fixed HOME, TMPDIR, and PATH values. Host environment variables, credentials, sockets, and additional mounts are not forwarded.
 - A hard timeout and bounded captured logs.
 - A unique container label and a post-run cleanup check. If cleanup cannot be confirmed, the result is blocked_cleanup_failed.
 
-The output directory must be separate from and must not contain or enclose the source directory. This prevents the writable output mount from making source files writable.
+The host output directory must exist, be empty, be writable by the non-root runner, and be separate from (not an ancestor or descendant of) the source directory. Build code writes only to the size-limited container tmpfs; USC copies the output back after execution. Exported symlinks are rejected. This avoids exposing an unbounded host directory as a writable container mount.
 
 ## Invocation contract
 
@@ -40,7 +40,7 @@ report = run_isolated_build(
 )
 ~~~
 
-Do not pass secrets in command arguments or source files. A mounted source tree is readable to the build process; the runner does not make arbitrary source contents confidential. Keep secrets out of fixture and candidate trees.
+Do not pass secrets in command arguments or source files. A mounted source tree is readable to the build process; the runner does not make arbitrary source contents confidential. The output tmpfs is limited to 256 MB and the temporary filesystem to 64 MB. Keep secrets out of fixture and candidate trees.
 
 ## Result states
 
