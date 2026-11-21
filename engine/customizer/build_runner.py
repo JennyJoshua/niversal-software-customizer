@@ -192,7 +192,7 @@ def _stage_source_snapshot(
                 raise ValueError("Source snapshot exceeds the 20,000-file limit.")
 
             relative_bytes = os.fsencode(relative_text)
-            mode = stat.S_IMODE(metadata.st_mode) & 0o777
+            mode = 0o755 if metadata.st_mode & 0o111 else 0o644
             digest.update(len(relative_bytes).to_bytes(4, "big"))
             digest.update(relative_bytes)
             digest.update(mode.to_bytes(4, "big"))
