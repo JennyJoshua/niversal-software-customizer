@@ -119,7 +119,7 @@ def test_apply_changes_only_allowlisted_branding_surfaces(tmp_path):
     assert "--usc-primary: #123456" in (source / "app" / "globals.css").read_text(encoding="utf-8")
     assert 'alt="My PNG Product"' in (source / "app" / "page.tsx").read_text(encoding="utf-8")
     after = snapshot(source)
-    changed = {path for path in before if before[path] != after[path]}
+    changed = {path for path in set(before) | set(after) if before.get(path) != after.get(path)}
     assert changed == {
         "app/globals.css", "app/layout.tsx", "app/page.tsx",
         "public/usc-brand-favicon.ico", "public/usc-brand-logo.svg",
