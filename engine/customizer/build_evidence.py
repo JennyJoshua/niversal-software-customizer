@@ -176,11 +176,14 @@ def inspect_git_source(source_path: str | Path) -> dict:
 
         tree_listing = run_git("ls-tree", "-r", "--full-tree", "-z", "HEAD")
         index_listing = run_git("ls-files", "--stage", "-z")
-        untracked_listing = run_git("ls-files", "--others", "--ignored", "--exclude-standard", "-z")
+        untracked_listing = run_git("ls-files", "--others", "--exclude-standard", "-z")
+        ignored_listing = run_git("ls-files", "--others", "--ignored", "--exclude-standard", "-z")
         if tree_listing.returncode != 0 or index_listing.returncode != 0:
             return unavailable("Git commit tree or index inventory could not be read.")
         if untracked_listing.returncode != 0 or untracked_listing.stdout:
-            return unavailable("Ignored or untracked files are present; exact source identity is unavailable.")
+            return unavailable("Untracked files are present; exact source identity is unavailable.")
+        if ignored_listing.returncode != 0 or ignored_listing.stdout:
+            return unavailable("Ignored files are present; exact source identity is unavailable.")
 
         tree_entries: dict[bytes, tuple[bytes, bytes]] = {}
         for record in tree_listing.stdout.split(b"\x00"):
