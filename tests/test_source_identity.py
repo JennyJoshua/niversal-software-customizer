@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import subprocess
+
+import pytest
 from pathlib import Path
 
 from customizer.build_evidence import inspect_git_source
