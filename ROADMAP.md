@@ -63,7 +63,8 @@
 - [ ] Complete source-secret review controls and bind the snapshot fingerprint to an exact Git tree SHA and sync history before customer use.
 - [x] Capture approved command identity, command fingerprint, pinned image reference and local image ID, Docker engine version, timestamps, duration, exit outcome, bounded logs, and best-effort redaction; validate the report against a versioned evidence schema (PR #57; 233 tests passed). Actual in-image toolchain inventory remains outstanding.
 - [x] Hash exported output files and create a deterministic artifact inventory digest; reject symlinks, special files, and oversized inventories (PR #57).
-- [ ] Complete source-secret review controls and bind the snapshot/evidence to an exact Git tree SHA, upstream baseline, and sync history.
+- [x] Capture the full source Git commit/tree identity and bind included staged files to exact committed Git blob IDs; reject dirty/index-mismatched, ignored/untracked, symlink, submodule, filter/smudge, and staging-race cases (PR #59; 248 tests passed).
+- [ ] Complete source-secret review controls and bind build evidence to the accepted upstream baseline and sync history.
 - [ ] Add a reviewed command-profile/CLI approval workflow; current runner remains an internal API.
 - [x] Define a detached, versioned build provenance manifest contract and strict JSON Schema covering source, upstream, customization, build evidence, artifact hashes, and no-release state (PR #58; 239 tests passed).
 - [ ] Implement manifest construction, digest verification, exact Git-tree-to-snapshot binding, and accepted-sync provenance cross-checks.
