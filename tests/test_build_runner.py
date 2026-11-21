@@ -97,10 +97,18 @@ def test_runner_uses_restricted_container_and_reports_success(tmp_path, monkeypa
         def kill(self):
             self.returncode = -9
 
+    ps_calls = {"count": 0}
+
     def fake_run(argv, **kwargs):
         if argv[1] == "info":
             return subprocess.CompletedProcess(argv, 0, stdout="27.0", stderr="")
+        if argv[1] == "cp":
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
         if argv[1:3] == ["ps", "-aq"]:
+            ps_calls["count"] += 1
+            found = "fixture-container" if ps_calls["count"] < 3 else ""
+            return subprocess.CompletedProcess(argv, 0, stdout=found, stderr="")
+        if argv[1:3] == ["rm", "-f"]:
             return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
         raise AssertionError(f"Unexpected host command: {argv}")
 
@@ -119,13 +127,15 @@ def test_runner_uses_restricted_container_and_reports_success(tmp_path, monkeypa
     assert "--cap-drop=ALL" in argv
     assert "--security-opt=no-new-privileges:true" in argv
     assert "--pull=never" in argv
+    assert f"--tmpfs=/out:rw,noexec,nosuid,nodev,size=256m,uid={os.getuid()},gid={os.getgid()},mode=0700" in argv
     assert f"--mount=type=bind,src={source.resolve()},dst=/src,readonly" in argv
-    assert f"--mount=type=bind,src={output.resolve()},dst=/out" in argv
+    assert not any(f"src={output.resolve()}" in item for item in argv)
     assert "--env=HOME=/tmp" in argv
     assert report["status"] == "passed"
     assert report["source_read_only"] is True
     assert report["network_disabled"] is True
     assert report["container_cleanup_confirmed"] is True
+    assert report["artifact_exported"] is True
     assert report["logs"] == "fixture tests passed\\n"
 
 
@@ -148,11 +158,20 @@ def test_runner_marks_container_cleanup_failure_as_blocked(tmp_path, monkeypatch
         def kill(self):
             self.returncode = -9
 
+    ps_calls = {"count": 0}
+
     def fake_run(argv, **kwargs):
         if argv[1] == "info":
             return subprocess.CompletedProcess(argv, 0, stdout="27.0", stderr="")
+        if argv[1] == "cp":
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
         if argv[1:3] == ["ps", "-aq"]:
+            ps_calls["count"] += 1
+            if ps_calls["count"] == 1:
+                return subprocess.CompletedProcess(argv, 0, stdout="fixture-container", stderr="")
             return subprocess.CompletedProcess(argv, 1, stdout="", stderr="daemon error")
+        if argv[1:3] == ["rm", "-f"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
         raise AssertionError(f"Unexpected host command: {argv}")
 
     monkeypatch.setattr("customizer.build_runner.shutil.which", lambda _name: "/usr/bin/docker")
@@ -165,3 +184,15 @@ def test_runner_marks_container_cleanup_failure_as_blocked(tmp_path, monkeypatch
     )
     assert report["status"] == "blocked_cleanup_failed"
     assert report["container_cleanup_confirmed"] is False
+
+
+
+def test_runner_requires_an_empty_output_directory(tmp_path):
+    source, output = _paths(tmp_path)
+    (output / "existing.txt").write_text("keep", encoding="utf-8")
+    report = run_isolated_build(
+        source, output, image=IMAGE, command=["python", "-m", "pytest"],
+        approved=True,
+    )
+    assert report["status"] == "blocked_invalid_request"
+    assert (output / "existing.txt").read_text(encoding="utf-8") == "keep"
