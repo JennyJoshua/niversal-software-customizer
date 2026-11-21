@@ -138,7 +138,19 @@ def _source_repository_url(root: Path) -> str | None:
         return None
 
 
-def _upstream_context(root: Path) -> dict | None:
+def _verify_git_blob(relative_path: str, raw: bytes, expected_git_blobs: dict[str, str]) -> None:
+    expected = expected_git_blobs.get(relative_path)
+    if expected is None:
+        raise ValueError(f"Provenance metadata is not tracked in the verified Git tree: {relative_path}")
+    algorithm = "sha1" if len(expected) == 40 else "sha256"
+    digest = hashlib.new(algorithm)
+    digest.update(f"blob {len(raw)}\\0".encode("ascii"))
+    digest.update(raw)
+    if digest.hexdigest() != expected:
+        raise ValueError(f"Provenance metadata changed after Git identity inspection: {relative_path}")
+
+
+def _upstream_context(root: Path, expected_git_blobs: dict[str, str]) -> dict | None:
     usc_dir = root / ".usc"
     if usc_dir.is_symlink():
         raise ValueError(".usc metadata directory must not be a symlink.")
@@ -155,6 +167,7 @@ def _upstream_context(root: Path) -> dict | None:
     if not baseline_path.is_file():
         raise ValueError("Upstream baseline must be a regular file.")
     baseline_bytes = _read_repository_file(root, ".usc/upstream-baseline.json", "Upstream baseline")
+    _verify_git_blob(".usc/upstream-baseline.json", baseline_bytes, expected_git_blobs)
     try:
         baseline = json.loads(baseline_bytes.decode("utf-8"), object_pairs_hook=_reject_duplicate_json_keys)
     except (UnicodeError, json.JSONDecodeError) as exc:
@@ -174,6 +187,7 @@ def _upstream_context(root: Path) -> dict | None:
     if provenance_relative.parent != PurePosixPath(".usc/provenance"):
         raise ValueError("Upstream provenance must be a direct child of .usc/provenance.")
     provenance_bytes = _read_repository_file(root, provenance_path, "Accepted upstream provenance")
+    _verify_git_blob(provenance_path, provenance_bytes, expected_git_blobs)
     try:
         provenance = json.loads(provenance_bytes.decode("utf-8"), object_pairs_hook=_reject_duplicate_json_keys)
     except (UnicodeError, json.JSONDecodeError) as exc:
@@ -215,7 +229,7 @@ def _upstream_context(root: Path) -> dict | None:
     }
 
 
-def _registry_context(root: Path) -> tuple[str | None, str | None]:
+def _registry_context(root: Path, expected_git_blobs: dict[str, str]) -> tuple[str | None, str | None]:
     registry_path = root / ".usc" / "customizations.json"
     if registry_path.is_symlink():
         raise ValueError("Customization registry must not be a symlink.")
@@ -226,6 +240,7 @@ def _registry_context(root: Path) -> tuple[str | None, str | None]:
     if registry_path.stat().st_size > _MAX_METADATA_BYTES:
         raise ValueError("Customization registry exceeds the 2 MB metadata limit.")
     raw = registry_path.read_bytes()
+    _verify_git_blob(".usc/customizations.json", raw, expected_git_blobs)
     try:
         registry = json.loads(raw.decode("utf-8"), object_pairs_hook=_reject_duplicate_json_keys)
     except (UnicodeError, json.JSONDecodeError) as exc:
@@ -324,8 +339,9 @@ def create_build_provenance_manifest(
     if artifact_inventory_sha256 != report.get("artifact_inventory_sha256"):
         raise ValueError("Actual artifact inventory digest does not match the build evidence.")
 
-    upstream = _upstream_context(root)
-    project_id, registry_sha256 = _registry_context(root)
+    expected_git_blobs = identity["_tracked_blob_sha_by_path"]
+    upstream = _upstream_context(root, expected_git_blobs)
+    project_id, registry_sha256 = _registry_context(root, expected_git_blobs)
     project_config_sha256 = _read_external_config(project_config_path, "Project configuration")
     branding_config_sha256 = _read_external_config(branding_config_path, "Branding configuration")
 
