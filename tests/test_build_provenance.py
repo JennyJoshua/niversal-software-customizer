@@ -72,6 +72,7 @@ def test_build_provenance_schema_is_valid_and_accepts_synthetic_manifest():
     ("mutate", "expected_fragment"),
     [
         (lambda item: item["source"].update(commit_sha="short"), "commit_sha"),
+        (lambda item: item["source"].update(repository_url="https://user:pass@example.test/repo"), "repository_url"),
         (lambda item: item.update(release_authorized=True), "release_authorized"),
         (lambda item: item["artifacts"][0].update(path="../escape.zip"), None),
         (lambda item: item["build"].update(extra_field="unexpected"), "extra_field"),
