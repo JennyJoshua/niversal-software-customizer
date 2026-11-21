@@ -74,7 +74,7 @@ def _probe_toolchain(
             "--cap-drop=ALL", "--security-opt=no-new-privileges:true",
             "--pids-limit=16", "--memory=128m", "--cpus=0.25",
             f"--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=8m,uid={os.getuid()},gid={os.getgid()},mode=0700",
-            f"--label={run_label}", "--entrypoint", executable, image, *version_args,
+            f"--label={run_label}", "--rm", "--entrypoint", executable, image, *version_args,
         ]
         process = None
         selector = None
@@ -131,6 +131,8 @@ def _probe_toolchain(
                     process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     pass
+            # A killed Docker CLI can leave its labelled container running.
+            _cleanup_labelled_containers(docker, run_label)
             raise
         except (OSError, subprocess.TimeoutExpired):
             status = "probe_failed"
@@ -506,8 +508,6 @@ def run_isolated_build(
     }
     artifact_inventory = []
     artifact_inventory_sha256 = hashlib.sha256(b"[]").hexdigest()
-    toolchain_inventory = []
-    toolchain_inventory_sha256 = _toolchain_inventory_digest(toolchain_inventory)
     started_at = None
     started_monotonic = None
     errors = []
