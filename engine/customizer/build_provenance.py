@@ -146,10 +146,12 @@ def _upstream_context(root: Path) -> dict | None:
         raise ValueError(".usc metadata path is not a directory.")
 
     baseline_path = usc_dir / "upstream-baseline.json"
+    if baseline_path.is_symlink():
+        raise ValueError("Upstream baseline must not be a symlink.")
     if not baseline_path.exists():
         return None
-    if baseline_path.is_symlink() or not baseline_path.is_file():
-        raise ValueError("Upstream baseline must be a regular, non-symlink file.")
+    if not baseline_path.is_file():
+        raise ValueError("Upstream baseline must be a regular file.")
     baseline_bytes = _read_repository_file(root, ".usc/upstream-baseline.json", "Upstream baseline")
     try:
         baseline = json.loads(baseline_bytes.decode("utf-8"), object_pairs_hook=_reject_duplicate_json_keys)
@@ -213,10 +215,12 @@ def _upstream_context(root: Path) -> dict | None:
 
 def _registry_context(root: Path) -> tuple[str | None, str | None]:
     registry_path = root / ".usc" / "customizations.json"
+    if registry_path.is_symlink():
+        raise ValueError("Customization registry must not be a symlink.")
     if not registry_path.exists():
         return None, None
-    if registry_path.is_symlink() or not registry_path.is_file():
-        raise ValueError("Customization registry must be a regular, non-symlink file.")
+    if not registry_path.is_file():
+        raise ValueError("Customization registry must be a regular file.")
     if registry_path.stat().st_size > _MAX_METADATA_BYTES:
         raise ValueError("Customization registry exceeds the 2 MB metadata limit.")
     raw = registry_path.read_bytes()
