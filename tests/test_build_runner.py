@@ -118,6 +118,8 @@ def test_runner_uses_restricted_container_and_reports_success(tmp_path, monkeypa
     ps_calls = {"count": 0}
 
     def fake_run(argv, **kwargs):
+        if "-C" in argv:
+            return subprocess.CompletedProcess(argv, 128, stdout=b"", stderr=b"not a Git repository")
         if argv[1] == "info":
             return subprocess.CompletedProcess(argv, 0, stdout="27.0", stderr="")
         if argv[1:3] == ["image", "inspect"]:
@@ -199,6 +201,8 @@ def test_runner_marks_container_cleanup_failure_as_blocked(tmp_path, monkeypatch
     ps_calls = {"count": 0}
 
     def fake_run(argv, **kwargs):
+        if "-C" in argv:
+            return subprocess.CompletedProcess(argv, 128, stdout=b"", stderr=b"not a Git repository")
         if argv[1] == "info":
             return subprocess.CompletedProcess(argv, 0, stdout="27.0", stderr="")
         if argv[1:3] == ["image", "inspect"]:
@@ -264,6 +268,8 @@ def test_runner_kills_container_when_log_limit_is_exceeded(tmp_path, monkeypatch
     ps_calls = {"count": 0}
 
     def fake_run(argv, **kwargs):
+        if "-C" in argv:
+            return subprocess.CompletedProcess(argv, 128, stdout=b"", stderr=b"not a Git repository")
         if argv[1] == "info":
             return subprocess.CompletedProcess(argv, 0, stdout="27.0", stderr="")
         if argv[1:3] == ["image", "inspect"]:
@@ -326,6 +332,8 @@ def test_runner_stops_execution_at_timeout(tmp_path, monkeypatch):
             self.returncode = -9
 
     def fake_run(argv, **kwargs):
+        if "-C" in argv:
+            return subprocess.CompletedProcess(argv, 128, stdout=b"", stderr=b"not a Git repository")
         if argv[1] == "info":
             return subprocess.CompletedProcess(argv, 0, stdout="27.0", stderr="")
         if argv[1:3] == ["image", "inspect"]:
