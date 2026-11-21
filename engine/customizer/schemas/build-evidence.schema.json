@@ -34,6 +34,22 @@
     },
     "command_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "docker_engine_version": { "type": ["string", "null"] },
+    "toolchain_inventory_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "toolchain_inventory": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "status", "exit_code", "version", "output_sha256"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["available", "missing", "probe_failed", "timed_out", "output_limit_exceeded"] },
+          "exit_code": { "type": ["integer", "null"] },
+          "version": { "type": ["string", "null"], "maxLength": 256 },
+          "output_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
     "started_at": { "type": ["string", "null"], "format": "date-time" },
     "finished_at": { "type": ["string", "null"], "format": "date-time" },
     "duration_seconds": { "type": ["number", "null"], "minimum": 0 },
