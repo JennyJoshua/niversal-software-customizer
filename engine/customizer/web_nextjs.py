@@ -245,6 +245,18 @@ def _build_plan(
         if existing != source_bytes:
             payloads[target_relative] = (target_file, source_bytes, None)
 
+    supported_fields = {
+        "brand.product_name", "brand.tagline",
+        "visual.primary_color", "visual.secondary_color",
+        "visual.logo_path", "visual.favicon_path",
+    }
+    requested_fields = (
+        [f"brand.{key}" for key in brand]
+        + [f"visual.{key}" for key in visual]
+        + [f"text_overrides.{key}" for key in branding.get("text_overrides", {})]
+    )
+    unsupported_fields = sorted(set(requested_fields) - supported_fields)
+
     operations = []
     for relative in sorted(payloads):
         _, updated, original = payloads[relative]
@@ -263,7 +275,7 @@ def _build_plan(
         "project_id": project.get("project_id"),
         "product_name": product_name,
         "planned_changes": operations,
-        "unsupported_fields": [],
+        "unsupported_fields": unsupported_fields,
         "errors": [],
         "write_allowlist": sorted(payloads),
         "protected_paths": [".git/**", ".usc/**", "licence/notice/attribution files", "all paths outside the adapter allowlist"],
@@ -308,7 +320,7 @@ def apply_nextjs_branding(
     try:
         project = _load_json(project_config)
         review = project.get("licence_review", {})
-        if review.get("status") != "approved" or not isinstance(review.get("review_record"), dict):
+        if not isinstance(review, dict) or review.get("status") != "approved" or not isinstance(review.get("review_record"), dict):
             raise ValueError("Human licence review must be marked approved with a review_record before application.")
         report, payloads = _build_plan(project_root, project_config, branding_config)
         if report["status"] not in {"ready_for_review", "no_changes_needed"}:

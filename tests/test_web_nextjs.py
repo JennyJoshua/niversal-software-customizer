@@ -13,6 +13,7 @@ ICO_BYTES = bytes.fromhex("0000010001000101000001002000040000001600000000000000"
 
 
 def project_fixture(tmp_path: Path, *, review_status: str = "approved") -> tuple[Path, Path, Path]:
+    tmp_path.mkdir(parents=True, exist_ok=True)
     source = tmp_path / "source"
     shutil.copytree(FIXTURE, source)
     (source / "branding" / "favicon.ico").write_bytes(ICO_BYTES)
@@ -70,6 +71,9 @@ def test_nextjs_plan_is_deterministic_read_only_and_allowlisted(tmp_path):
     assert first["read_only"] is True
     assert first["files_changed"] is False
     assert first["code_executed"] is False
+    assert first["unsupported_fields"] == [
+        "brand.publisher_name",
+    ]
     assert first["write_allowlist"] == [
         "app/globals.css", "app/layout.tsx", "app/page.tsx",
         "public/usc-brand-favicon.ico", "public/usc-brand-logo.svg",
@@ -91,9 +95,10 @@ def test_apply_requires_explicit_approval_and_human_licence_review(tmp_path):
     assert snapshot(source) == before
 
     source2, project2, branding2 = project_fixture(tmp_path / "pending", review_status="pending")
+    before_pending = snapshot(source2)
     denied_review = apply_nextjs_branding(source2, project2, branding2, approved=True)
     assert denied_review["status"] == "blocked_unsafe_or_unsupported"
-    assert snapshot(source2) == snapshot(source2)
+    assert snapshot(source2) == before_pending
 
 
 def test_apply_changes_only_allowlisted_branding_surfaces(tmp_path):

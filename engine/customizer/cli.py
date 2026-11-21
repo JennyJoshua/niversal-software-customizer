@@ -202,6 +202,10 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
         elif args.command == "customize-apply":
             source_root = Path(args.path).expanduser().resolve()
+            if args.output:
+                output_path = Path(args.output).expanduser().resolve()
+                if output_path == source_root or source_root in output_path.parents:
+                    raise ValueError("Apply report output must be outside the source directory.")
             report = apply_nextjs_branding(
                 source_root, args.project_config, args.branding_config,
                 approved=args.approve,
