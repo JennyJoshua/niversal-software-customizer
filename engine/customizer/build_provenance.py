@@ -316,12 +316,18 @@ def create_build_provenance_manifest(
         "source_git_tree_sha", "source_worktree_clean",
         "source_git_identity_error", "excluded_source_path_count",
         "artifact_inventory", "artifact_inventory_sha256",
+        "toolchain_inventory", "toolchain_inventory_sha256",
     )
     missing_fields = [key for key in required_evidence_fields if key not in report]
     if missing_fields:
         raise ValueError("Build evidence is missing provenance fields: " + ", ".join(missing_fields))
     if report["source_git_identity_error"] is not None:
         raise ValueError("Build evidence reports a source Git identity error.")
+    toolchain_digest = hashlib.sha256(
+        json.dumps(report["toolchain_inventory"], sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    if toolchain_digest != report["toolchain_inventory_sha256"]:
+        raise ValueError("Toolchain inventory digest does not match build evidence.")
 
     identity = inspect_git_source(root)
     if identity["source_worktree_clean"] is not True:
@@ -385,6 +391,7 @@ def create_build_provenance_manifest(
             "source_snapshot_sha256": snapshot_sha256,
             "artifact_inventory_sha256": artifact_inventory_sha256,
             "docker_engine_version": report.get("docker_engine_version"),
+            "toolchain_inventory_sha256": toolchain_digest,
         },
         "artifacts": [
             {

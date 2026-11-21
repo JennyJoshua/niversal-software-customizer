@@ -27,6 +27,131 @@ _SECRET_FLAGS = {
     "--password", "--token", "--secret", "--api-key", "--apikey",
     "--credential", "--authorization", "--auth-token",
 }
+_TOOLCHAIN_PROBES = (
+    ("python", ("--version",)),
+    ("python3", ("--version",)),
+    ("node", ("--version",)),
+    ("npm", ("--version",)),
+    ("git", ("--version",)),
+    ("go", ("version",)),
+    ("rustc", ("--version",)),
+    ("cargo", ("--version",)),
+    ("java", ("-version",)),
+    ("php", ("--version",)),
+    ("ruby", ("--version",)),
+    ("dotnet", ("--version",)),
+    ("gcc", ("--version",)),
+    ("cmake", ("--version",)),
+    ("make", ("--version",)),
+    ("deno", ("--version",)),
+    ("bun", ("--version",)),
+    ("uv", ("--version",)),
+    ("pytest", ("--version",)),
+)
+_MAX_TOOLCHAIN_OUTPUT_BYTES = 4096
+
+
+def _toolchain_inventory_digest(inventory: list[dict]) -> str:
+    canonical = json.dumps(inventory, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def _probe_toolchain(
+    docker: str,
+    image: str,
+    run_label: str,
+    *,
+    timeout_seconds: float = 3.0,
+    max_output_bytes: int = _MAX_TOOLCHAIN_OUTPUT_BYTES,
+    probes: Sequence[tuple[str, tuple[str, ...]]] = _TOOLCHAIN_PROBES,
+) -> list[dict]:
+    """Probe a fixed tool list in disposable, network-disabled containers with bounded output."""
+    inventory = []
+    for executable, version_args in probes:
+        argv = [
+            docker, "run", "--pull=never", "--network=none", "--read-only",
+            f"--user={os.getuid()}:{os.getgid()}",
+            "--cap-drop=ALL", "--security-opt=no-new-privileges:true",
+            "--pids-limit=16", "--memory=128m", "--cpus=0.25",
+            f"--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=8m,uid={os.getuid()},gid={os.getgid()},mode=0700",
+            f"--label={run_label}", "--rm", "--entrypoint", executable, image, *version_args,
+        ]
+        process = None
+        selector = None
+        output = bytearray()
+        exit_code = None
+        status = "probe_failed"
+        try:
+            process = subprocess.Popen(
+                argv,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                close_fds=True,
+            )
+            assert process.stdout is not None
+            selector = selectors.DefaultSelector()
+            selector.register(process.stdout, selectors.EVENT_READ)
+            deadline = time.monotonic() + timeout_seconds
+            while selector.get_map():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    status = "timed_out"
+                    process.kill()
+                    break
+                for key, _ in selector.select(timeout=min(0.1, remaining)):
+                    chunk = os.read(key.fd, 8192)
+                    if not chunk:
+                        selector.unregister(key.fileobj)
+                        continue
+                    available = max_output_bytes - len(output)
+                    if len(chunk) > available:
+                        output.extend(chunk[:available])
+                        status = "output_limit_exceeded"
+                        process.kill()
+                        break
+                    output.extend(chunk)
+                if status in {"timed_out", "output_limit_exceeded"}:
+                    break
+            try:
+                exit_code = process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                status = "timed_out"
+                try:
+                    exit_code = process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    exit_code = None
+            if status not in {"timed_out", "output_limit_exceeded"}:
+                status = "available" if exit_code == 0 else "missing" if exit_code == 127 else "probe_failed"
+        except KeyboardInterrupt:
+            if process is not None and process.poll() is None:
+                process.kill()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
+            # A killed Docker CLI can leave its labelled container running.
+            _cleanup_labelled_containers(docker, run_label)
+            raise
+        except (OSError, subprocess.TimeoutExpired):
+            status = "probe_failed"
+        finally:
+            if selector is not None:
+                selector.close()
+            if process is not None and process.stdout is not None:
+                process.stdout.close()
+
+        redacted = redact_build_logs(output.decode("utf-8", errors="replace"))
+        first_line = next((line.strip() for line in redacted.splitlines() if line.strip()), "")
+        inventory.append({
+            "name": executable,
+            "status": status,
+            "exit_code": exit_code,
+            "version": first_line[:256] or None,
+            "output_sha256": hashlib.sha256(bytes(output)).hexdigest(),
+        })
+    return inventory
 
 
 def _validated_result(report: dict) -> dict:
@@ -360,8 +485,10 @@ def run_isolated_build(
             "errors": ["The digest-pinned image is not available locally; image pulling is disabled."],
         })
     docker_image_id = image_probe.stdout.strip()
-
     run_label = f"com.usc.build-run={uuid.uuid4().hex}"
+    toolchain_inventory = _probe_toolchain(docker, image, run_label)
+    toolchain_inventory_sha256 = _toolchain_inventory_digest(toolchain_inventory)
+
     logs = bytearray()
     log_truncated = False
     status = "failed"
@@ -527,6 +654,8 @@ def run_isolated_build(
         "image": image,
         "docker_image_id": docker_image_id,
         "docker_engine_version": docker_engine_version,
+        "toolchain_inventory": toolchain_inventory,
+        "toolchain_inventory_sha256": toolchain_inventory_sha256,
         "command_argv": args,
         "command_sha256": command_sha256,
         "command_executable": args[0],
