@@ -471,6 +471,7 @@ def run_isolated_build(
                                 errors.append("Build artifacts could not be exported and inventoried safely.")
             finally:
                 selector.close()
+                selector = None
                 process.stdout.close()
     except ValueError as exc:
         status = "blocked_invalid_request"
