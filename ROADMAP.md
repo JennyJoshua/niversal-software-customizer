@@ -65,7 +65,8 @@
 - [x] Hash exported output files and create a deterministic artifact inventory digest; reject symlinks, special files, and oversized inventories (PR #57).
 - [ ] Complete source-secret review controls and bind the snapshot/evidence to an exact Git tree SHA, upstream baseline, and sync history.
 - [ ] Add a reviewed command-profile/CLI approval workflow; current runner remains an internal API.
-- [ ] Generate and validate a provenance manifest including upstream baseline and sync history.
+- [x] Define a detached, versioned build provenance manifest contract and strict JSON Schema covering source, upstream, customization, build evidence, artifact hashes, and no-release state (PR #58; 239 tests passed).
+- [ ] Implement manifest construction, digest verification, exact Git-tree-to-snapshot binding, and accepted-sync provenance cross-checks.
 - [ ] Strengthen secret prevention beyond known-path exclusions and best-effort log redaction before customer use.
 - [ ] Produce artifacts without automatic public release; add failure-injection coverage for output-path and export edge cases.
 
