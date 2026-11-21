@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path, PurePosixPath
@@ -334,7 +335,8 @@ def apply_nextjs_branding(
         root = Path(project_root).expanduser().resolve(strict=True)
         staged: dict[str, Path] = {}
         changed = []
-        committed: list[tuple[str, Path, bytes | None, bytes]] = []
+        committed: list[tuple[str, Path, bytes | None, bytes, int]] = []
+        modes: dict[str, int] = {}
         try:
             # Preflight every target and stage every payload before the first project write.
             for relative in sorted(payloads):
@@ -344,12 +346,15 @@ def apply_nextjs_branding(
                     if original is None and current == updated:
                         continue
                     raise ValueError(f"Target changed after planning; refusing to write: {relative}")
+                mode = stat.S_IMODE(current_target.stat().st_mode) if original is not None else 0o644
+                modes[relative] = mode
                 descriptor, temporary = tempfile.mkstemp(prefix=".usc-brand-stage-", dir=current_target.parent)
                 try:
                     with os.fdopen(descriptor, "wb") as handle:
                         handle.write(updated)
                         handle.flush()
                         os.fsync(handle.fileno())
+                    os.chmod(temporary, mode)
                 except Exception:
                     if os.path.exists(temporary):
                         os.unlink(temporary)
@@ -366,7 +371,7 @@ def apply_nextjs_branding(
                 if original is None:
                     # Hard-link creation is atomic and fails rather than replacing an existing path.
                     os.link(staged[relative], current_target)
-                    committed.append((relative, current_target, original, updated))
+                    committed.append((relative, current_target, original, updated, modes[relative]))
                     changed.append({"path": relative, "sha256": _digest(updated)})
                     os.unlink(staged[relative])
                     staged.pop(relative, None)
@@ -377,7 +382,7 @@ def apply_nextjs_branding(
                     staged.pop(relative, None)
         except Exception as exc:
             rollback_errors = []
-            for relative, target, original, updated in reversed(committed):
+            for relative, target, original, updated, mode in reversed(committed):
                 try:
                     safe_target, current = _safe_target(root, relative)
                     if current != updated:
