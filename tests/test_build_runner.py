@@ -337,6 +337,7 @@ def test_source_snapshot_hash_is_deterministic_and_excludes_known_secret_paths(t
     source.mkdir()
     (source / "app").mkdir()
     (source / "app" / "main.py").write_text("print('hello')", encoding="utf-8")
+    (source / "app" / "main.py").chmod(0o4755)
     (source / ".env").write_text("TOKEN=secret", encoding="utf-8")
     (source / ".env.example").write_text("TOKEN=example", encoding="utf-8")
     (source / ".npmrc").write_text("//registry/:_authToken=secret", encoding="utf-8")
@@ -354,6 +355,7 @@ def test_source_snapshot_hash_is_deterministic_and_excludes_known_secret_paths(t
     assert len(first_hash) == 64
     assert first_excluded == second_excluded
     assert (first / "app" / "main.py").is_file()
+    assert (first / "app" / "main.py").stat().st_mode & 0o7777 == 0o755
     assert (first / ".env.example").is_file()
     assert not (first / ".env").exists()
     assert not (first / ".npmrc").exists()
