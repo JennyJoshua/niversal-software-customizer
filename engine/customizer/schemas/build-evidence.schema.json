@@ -45,6 +45,10 @@
     "source_read_only": { "type": "boolean" },
     "network_disabled": { "type": "boolean" },
     "source_snapshot_sha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+    "source_git_commit_sha": { "type": ["string", "null"], "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$" },
+    "source_git_tree_sha": { "type": ["string", "null"], "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$" },
+    "source_worktree_clean": { "type": "boolean" },
+    "source_git_identity_error": { "type": ["string", "null"] },
     "excluded_source_path_count": { "type": "integer", "minimum": 0 },
     "artifact_exported": { "type": "boolean" },
     "artifact_inventory": {
