@@ -169,6 +169,10 @@ def test_runner_uses_restricted_container_and_reports_success(tmp_path, monkeypa
     assert report["started_at"] and report["finished_at"]
     assert report["duration_seconds"] >= 0
     assert len(report["source_snapshot_sha256"]) == 64
+    assert report["source_git_commit_sha"] is None
+    assert report["source_git_tree_sha"] is None
+    assert report["source_worktree_clean"] is False
+    assert report["source_git_identity_error"]
     assert report["excluded_source_path_count"] >= 3
     assert report["logs"] == "fixture tests passed\\n"
 
