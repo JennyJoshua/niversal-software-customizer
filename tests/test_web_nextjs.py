@@ -4,6 +4,8 @@ import json
 import shutil
 from pathlib import Path
 
+from customizer.cli import main
+
 from customizer.web_nextjs import apply_nextjs_branding, create_nextjs_branding_plan
 
 
@@ -125,6 +127,8 @@ def test_apply_changes_only_allowlisted_branding_surfaces(tmp_path):
         "public/usc-brand-favicon.ico", "public/usc-brand-logo.svg",
     }
     assert (source / "LICENSE").read_bytes() == before["LICENSE"]
+    assert (source / "NOTICE").read_bytes() == before["NOTICE"]
+    assert (source / ".usc" / "upstream-baseline.json").read_bytes() == before[".usc/upstream-baseline.json"]
     assert (source / "package.json").read_bytes() == before["package.json"]
 
 
@@ -177,4 +181,30 @@ def test_adapter_rejects_symlinked_brand_asset(tmp_path):
     report = create_nextjs_branding_plan(source, project, branding)
 
     assert report["status"] in {"blocked_invalid_configuration", "blocked_unsafe_or_unsupported"}
+    assert snapshot(source) == before
+
+
+def test_cli_plan_routes_to_implemented_nextjs_adapter(tmp_path, capsys):
+    source, project, branding = project_fixture(tmp_path)
+    result = main([
+        "customize-plan", "--path", str(source),
+        "--project-config", str(project), "--branding-config", str(branding),
+    ])
+    report = json.loads(capsys.readouterr().out)
+    assert result == 0
+    assert report["adapter_id"] == "web-nextjs"
+    assert report["status"] == "ready_for_review"
+    assert report["files_changed"] is False
+
+
+def test_cli_apply_rejects_in_source_report_path_before_writing(tmp_path, capsys):
+    source, project, branding = project_fixture(tmp_path)
+    before = snapshot(source)
+    result = main([
+        "customize-apply", "--path", str(source),
+        "--project-config", str(project), "--branding-config", str(branding),
+        "--approve", "--output", str(source / "apply-report.json"),
+    ])
+    assert result == 2
+    assert "outside the source directory" in capsys.readouterr().err
     assert snapshot(source) == before
