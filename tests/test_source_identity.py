@@ -51,7 +51,7 @@ def test_inspect_git_source_rejects_modified_tracked_file(tmp_path):
 
     assert identity["source_worktree_clean"] is False
     assert identity["source_git_commit_sha"] is None
-    assert "dirty" in identity["source_git_identity_error"]
+    assert "Raw tracked source contents differ" in identity["source_git_identity_error"]
 
 
 def test_inspect_git_source_rejects_ignored_untracked_files(tmp_path):
