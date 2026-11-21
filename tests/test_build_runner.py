@@ -640,6 +640,7 @@ def test_toolchain_probe_captures_version_in_network_disabled_disposable_contain
     assert "--read-only" in argv
     assert "--cap-drop=ALL" in argv
     assert "--pull=never" in argv
+    assert "--rm" in argv
     assert "--entrypoint" in argv
     assert "python" in argv
     assert not any(item.startswith("--mount=") for item in argv)
