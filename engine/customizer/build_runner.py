@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
 
-from .build_evidence import create_artifact_inventory, redact_build_logs, validate_build_evidence
+from .build_evidence import create_artifact_inventory, inspect_git_source, redact_build_logs, validate_build_evidence
 
 _PINNED_IMAGE = re.compile(r"^[^\s@]+@sha256:[0-9a-f]{64}$")
 _SHELLS = {"sh", "bash", "dash", "zsh", "fish", "cmd", "powershell", "pwsh"}
@@ -331,6 +331,12 @@ def run_isolated_build(
     process = None
     source_snapshot_sha256 = None
     excluded_source_path_count = 0
+    source_git_identity = {
+        "source_git_commit_sha": None,
+        "source_git_tree_sha": None,
+        "source_worktree_clean": False,
+        "source_git_identity_error": "Source Git identity has not been inspected.",
+    }
     artifact_inventory = []
     artifact_inventory_sha256 = hashlib.sha256(b"[]").hexdigest()
     started_at = None
@@ -342,6 +348,7 @@ def run_isolated_build(
     try:
         with tempfile.TemporaryDirectory(prefix="usc-build-") as temporary_root:
             staged_source = Path(temporary_root) / "source"
+            source_git_identity = inspect_git_source(source)
             source_snapshot_sha256, excluded_source_path_count = _stage_source_snapshot(source, staged_source)
             if "," in str(staged_source):
                 raise ValueError("Temporary snapshot path must not contain commas.")
@@ -474,6 +481,10 @@ def run_isolated_build(
         "artifact_inventory": artifact_inventory,
         "artifact_inventory_sha256": artifact_inventory_sha256,
         "source_snapshot_sha256": source_snapshot_sha256,
+        "source_git_commit_sha": source_git_identity["source_git_commit_sha"],
+        "source_git_tree_sha": source_git_identity["source_git_tree_sha"],
+        "source_worktree_clean": source_git_identity["source_worktree_clean"],
+        "source_git_identity_error": source_git_identity["source_git_identity_error"],
         "excluded_source_path_count": excluded_source_path_count,
         "network_disabled": True,
         "container_cleanup_confirmed": cleanup_ok,
