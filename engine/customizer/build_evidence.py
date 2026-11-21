@@ -183,11 +183,11 @@ def inspect_git_source(source_path: str | Path) -> dict:
             return unavailable("Ignored or untracked files are present; exact source identity is unavailable.")
 
         tree_entries: dict[bytes, tuple[bytes, bytes]] = {}
-        for record in tree_listing.stdout.split(b"\\x00"):
+        for record in tree_listing.stdout.split(b"\x00"):
             if not record:
                 continue
             try:
-                header, path_bytes = record.split(b"\\t", 1)
+                header, path_bytes = record.split(b"\t", 1)
                 mode, object_type, blob_sha = header.split()
             except ValueError:
                 return unavailable("Git returned an invalid commit-tree record.")
@@ -196,11 +196,11 @@ def inspect_git_source(source_path: str | Path) -> dict:
             tree_entries[path_bytes] = (mode, blob_sha)
 
         index_entries: dict[bytes, tuple[bytes, bytes]] = {}
-        for record in index_listing.stdout.split(b"\\x00"):
+        for record in index_listing.stdout.split(b"\x00"):
             if not record:
                 continue
             try:
-                header, path_bytes = record.split(b"\\t", 1)
+                header, path_bytes = record.split(b"\t", 1)
                 mode, blob_sha, stage = header.split()
             except ValueError:
                 return unavailable("Git returned an invalid tracked-file index record.")
