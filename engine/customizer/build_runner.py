@@ -67,13 +67,20 @@ def _validate_request(
         raise ValueError("Output directory must be empty before execution.")
     return source, output, args
 
-_EXCLUDED_DIRS = {".git", ".usc", ".ssh", ".aws", ".azure", ".gcloud", ".terraform"}
+_EXCLUDED_DIRS = {
+    ".git", ".usc", ".ssh", ".aws", ".azure", ".gcloud", ".terraform",
+    ".docker", ".kube",
+}
 _EXCLUDED_FILE_NAMES = {
-    ".git", ".env", ".npmrc", ".pypirc", ".netrc", ".git-credentials",
-    "id_rsa", "id_ed25519", "credentials.json", "secrets.json", "secret.json",
+    ".git", ".gitconfig", ".env", ".npmrc", ".pypirc", ".netrc", ".git-credentials",
+    ".vault-token", ".pgpass", ".my.cnf", "id_rsa", "id_dsa", "id_ecdsa",
+    "id_ed25519", "credentials", "credentials.json", "secrets.json", "secret.json",
 }
 _SAFE_ENV_EXAMPLES = {".env.example", ".env.sample", ".env.template"}
-_SENSITIVE_SUFFIXES = {".pem", ".key", ".p12", ".pfx", ".p8", ".jks", ".keystore", ".tfstate"}
+_SENSITIVE_SUFFIXES = {
+    ".pem", ".key", ".p12", ".pfx", ".p8", ".jks", ".keystore",
+    ".tfstate", ".secret", ".token", ".mobileprovision",
+}
 _MAX_SOURCE_BYTES = 256 * 1024 * 1024
 _MAX_SOURCE_FILES = 20_000
 _MAX_SINGLE_SOURCE_FILE = 50 * 1024 * 1024
@@ -88,7 +95,7 @@ def _is_sensitive_file(relative: Path) -> bool:
         return True
     if suffix in _SENSITIVE_SUFFIXES:
         return True
-    if name.startswith("service-account") and suffix == ".json":
+    if (name.startswith("service-account") or name.startswith("firebase-adminsdk")) and suffix == ".json":
         return True
     if "credential" in name and suffix in {".json", ".yaml", ".yml", ".toml"}:
         return True
@@ -136,7 +143,7 @@ def _stage_source_snapshot(source: Path, destination: Path) -> tuple[str, int]:
             if file_count > _MAX_SOURCE_FILES:
                 raise ValueError("Source snapshot exceeds the 20,000-file limit.")
 
-            relative_bytes = relative.as_posix().encode("utf-8")
+            relative_bytes = os.fsencode(relative.as_posix())
             mode = stat.S_IMODE(metadata.st_mode)
             digest.update(len(relative_bytes).to_bytes(4, "big"))
             digest.update(relative_bytes)
@@ -353,7 +360,7 @@ def run_isolated_build(
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 pass
-        status = "blocked_invalid_request" if isinstance(exc, ValueError) else "blocked_isolation_unavailable"
+        status = "blocked_invalid_request" if process is None else "blocked_isolation_unavailable"
         execution_started = False if process is None else execution_started
         logs.extend(str(exc).encode("utf-8", errors="replace")[:max_log_bytes])
     finally:
