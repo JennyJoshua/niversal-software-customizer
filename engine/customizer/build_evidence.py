@@ -174,28 +174,46 @@ def inspect_git_source(source_path: str | Path) -> dict:
         commit_sha = os.fsdecode(head.stdout.strip()).lower()
         tree_sha = os.fsdecode(tree.stdout.strip()).lower()
 
-        status = run_git("status", "--porcelain=v1", "--untracked-files=all")
-        if status.returncode != 0 or status.stdout:
-            return unavailable("Git worktree or index is dirty; exact source identity is unavailable.")
-        clean_preview = run_git("clean", "-ndx")
-        if clean_preview.returncode != 0 or clean_preview.stdout:
+        tree_listing = run_git("ls-tree", "-r", "--full-tree", "-z", "HEAD")
+        index_listing = run_git("ls-files", "--stage", "-z")
+        untracked_listing = run_git("ls-files", "--others", "--ignored", "--exclude-standard", "-z")
+        if tree_listing.returncode != 0 or index_listing.returncode != 0:
+            return unavailable("Git commit tree or index inventory could not be read.")
+        if untracked_listing.returncode != 0 or untracked_listing.stdout:
             return unavailable("Ignored or untracked files are present; exact source identity is unavailable.")
 
-        listing = run_git("ls-files", "--stage", "-z")
-        if listing.returncode != 0:
-            return unavailable("Tracked source file inventory could not be read.")
-        expected_blobs: list[bytes] = []
-        paths: list[bytes] = []
-        for record in listing.stdout.split(b"\x00"):
+        tree_entries: dict[bytes, tuple[bytes, bytes]] = {}
+        for record in tree_listing.stdout.split(b"\\x00"):
             if not record:
                 continue
             try:
-                header, path_bytes = record.split(b"\t", 1)
+                header, path_bytes = record.split(b"\\t", 1)
+                mode, object_type, blob_sha = header.split()
+            except ValueError:
+                return unavailable("Git returned an invalid commit-tree record.")
+            if object_type != b"blob" or mode not in {b"100644", b"100755"}:
+                return unavailable("Committed source contains a symlink, submodule, or non-regular entry.")
+            tree_entries[path_bytes] = (mode, blob_sha)
+
+        index_entries: dict[bytes, tuple[bytes, bytes]] = {}
+        for record in index_listing.stdout.split(b"\\x00"):
+            if not record:
+                continue
+            try:
+                header, path_bytes = record.split(b"\\t", 1)
                 mode, blob_sha, stage = header.split()
             except ValueError:
                 return unavailable("Git returned an invalid tracked-file index record.")
             if stage != b"0" or mode not in {b"100644", b"100755"}:
-                return unavailable("Tracked source contains a conflict stage, symlink, submodule, or non-regular entry.")
+                return unavailable("Git index contains a conflict stage, symlink, submodule, or non-regular entry.")
+            index_entries[path_bytes] = (mode, blob_sha)
+
+        if index_entries != tree_entries:
+            return unavailable("Git index does not exactly match the committed HEAD tree.")
+
+        paths = sorted(tree_entries)
+        expected_blobs = [tree_entries[path][1] for path in paths]
+        for path_bytes in paths:
             path = root / os.fsdecode(path_bytes)
             try:
                 metadata = path.stat(follow_symlinks=False)
@@ -204,10 +222,8 @@ def inspect_git_source(source_path: str | Path) -> dict:
             if not stat.S_ISREG(metadata.st_mode):
                 return unavailable("A tracked source path is not a regular file.")
             executable = bool(metadata.st_mode & 0o111)
-            if executable != (mode == b"100755"):
+            if executable != (tree_entries[path_bytes][0] == b"100755"):
                 return unavailable("A tracked source file's executable mode differs from its Git tree mode.")
-            expected_blobs.append(blob_sha)
-            paths.append(path_bytes)
 
         if paths:
             actual_blobs: list[bytes] = []
