@@ -60,7 +60,9 @@ def _resolve_directory(path_value: str | Path, label: str) -> Path:
     return resolved
 
 
-def _read_repository_file(root: Path, relative: str, label: str) -> bytes:
+def _read_repository_file(
+    root: Path, relative: str, label: str, *, max_bytes: int = _MAX_METADATA_BYTES,
+) -> bytes:
     safe = _safe_relative_path(relative, label)
     path = root
     for part in PurePosixPath(safe).parts:
@@ -70,8 +72,8 @@ def _read_repository_file(root: Path, relative: str, label: str) -> bytes:
     if not path.is_file():
         raise ValueError(f"{label} is missing or is not a regular file: {safe}")
     metadata = path.stat(follow_symlinks=False)
-    if metadata.st_size > _MAX_METADATA_BYTES:
-        raise ValueError(f"{label} exceeds the 2 MB metadata limit: {safe}")
+    if metadata.st_size > max_bytes:
+        raise ValueError(f"{label} exceeds its configured size limit: {safe}")
     return path.read_bytes()
 
 
@@ -281,11 +283,13 @@ def create_build_provenance_manifest(
             if left == right or left in right.parents or right in left.parents:
                 raise ValueError(f"{left_label} and {right_label} directories must be separate.")
 
-    raw_evidence = _read_repository_file(evidence_dir, evidence_relative, "Build evidence")
+    raw_evidence = _read_repository_file(
+        evidence_dir, evidence_relative, "Build evidence", max_bytes=_MAX_EVIDENCE_BYTES,
+    )
     if len(raw_evidence) > _MAX_EVIDENCE_BYTES:
         raise ValueError("Build evidence document exceeds the 8 MB limit.")
     try:
-    report = json.loads(raw_evidence.decode("utf-8"), object_pairs_hook=_reject_duplicate_json_keys)
+        report = json.loads(raw_evidence.decode("utf-8"), object_pairs_hook=_reject_duplicate_json_keys)
     except (UnicodeError, json.JSONDecodeError) as exc:
         raise ValueError(f"Build evidence document is invalid JSON: {exc}") from exc
     if not isinstance(report, dict):
