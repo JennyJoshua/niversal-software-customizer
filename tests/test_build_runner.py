@@ -41,6 +41,8 @@ def test_build_requires_explicit_approval_and_does_not_probe_docker(tmp_path, mo
         ("python:latest", ["python", "-m", "pytest"], 30),
         (IMAGE, ["sh", "-c", "echo unsafe"], 30),
         (IMAGE, ["python", "-m", "pytest"], 0),
+        (IMAGE, ["python", "-m", "pytest", "--token=do-not-log-this"], 30),
+        (IMAGE, ["python", "-m", "pytest", "https://user:pass@example.test"], 30),
     ],
 )
 def test_invalid_execution_profiles_are_blocked(tmp_path, image, command, timeout):
@@ -161,6 +163,11 @@ def test_runner_uses_restricted_container_and_reports_success(tmp_path, monkeypa
     assert report["network_disabled"] is True
     assert report["container_cleanup_confirmed"] is True
     assert report["artifact_exported"] is True
+    assert report["docker_image_id"] == "sha256:" + "b" * 64
+    assert report["command_sha256"] and len(report["command_sha256"]) == 64
+    assert report["logs_sha256"] and len(report["logs_sha256"]) == 64
+    assert report["started_at"] and report["finished_at"]
+    assert report["duration_seconds"] >= 0
     assert len(report["source_snapshot_sha256"]) == 64
     assert report["excluded_source_path_count"] >= 3
     assert report["logs"] == "fixture tests passed\\n"
