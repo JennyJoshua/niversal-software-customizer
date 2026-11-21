@@ -468,6 +468,15 @@ def run_isolated_build(
                             status = "artifact_export_failed"
                             if not errors:
                                 errors.append("Build artifacts could not be exported and inventoried safely.")
+            except KeyboardInterrupt:
+                if process.poll() is None:
+                    process.kill()
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        errors.append("Docker runner did not exit after interruption; labelled-container cleanup will still be attempted.")
+                errors.append("Build execution was interrupted; USC attempted to stop the runner and clean up its container.")
+                raise
             finally:
                 selector.close()
                 process.stdout.close()
