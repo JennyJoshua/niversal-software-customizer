@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 
 from customizer.build_evidence import inspect_git_source
+from customizer.build_runner import _stage_source_snapshot
 
 
 def _git(root: Path, *args: str) -> str:
@@ -73,3 +74,47 @@ def test_inspect_git_source_rejects_non_repository_root(tmp_path):
 
     assert identity["source_worktree_clean"] is False
     assert "repository root" in identity["source_git_identity_error"]
+
+
+
+def test_staged_snapshot_is_bound_to_inspected_git_blobs(tmp_path):
+    root = tmp_path / "repo"
+    _committed_repo(root)
+    identity = inspect_git_source(root)
+    assert identity["source_worktree_clean"] is True
+
+    snapshot = tmp_path / "snapshot"
+    _stage_source_snapshot(
+        root,
+        snapshot,
+        expected_git_blobs=identity["_tracked_blob_sha_by_path"],
+    )
+    assert (snapshot / "app.py").read_text(encoding="utf-8") == "print('fixture')\\n"
+
+
+def test_staged_snapshot_rejects_file_changed_after_git_identity_check(tmp_path):
+    root = tmp_path / "repo"
+    _committed_repo(root)
+    identity = inspect_git_source(root)
+    (root / "app.py").write_text("tampered after identity check\\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="exact Git tree blob"):
+        _stage_source_snapshot(
+            root,
+            tmp_path / "snapshot",
+            expected_git_blobs=identity["_tracked_blob_sha_by_path"],
+        )
+
+
+def test_staged_snapshot_rejects_new_untracked_file_after_identity_check(tmp_path):
+    root = tmp_path / "repo"
+    _committed_repo(root)
+    identity = inspect_git_source(root)
+    (root / "untracked.py").write_text("not in HEAD\\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="outside the inspected Git tree"):
+        _stage_source_snapshot(
+            root,
+            tmp_path / "snapshot",
+            expected_git_blobs=identity["_tracked_blob_sha_by_path"],
+        )
