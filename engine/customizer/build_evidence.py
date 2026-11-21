@@ -193,7 +193,7 @@ def inspect_git_source(source_path: str | Path) -> dict:
             if not record:
                 continue
             try:
-                header, path_bytes = record.split(b"\\t", 1)
+                header, path_bytes = record.split(b"\t", 1)
                 mode, blob_sha, stage = header.split()
             except ValueError:
                 return unavailable("Git returned an invalid tracked-file index record.")
