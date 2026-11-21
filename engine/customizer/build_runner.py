@@ -205,7 +205,7 @@ def _stage_source_snapshot(
             if expected_blob is not None:
                 algorithm = "sha1" if len(expected_blob) == 40 else "sha256"
                 git_blob_digest = hashlib.new(algorithm)
-                git_blob_digest.update(f"blob {metadata.st_size}\\0".encode("ascii"))
+                git_blob_digest.update(f"blob {metadata.st_size}\0".encode("ascii"))
             with path.open("rb") as source_file, target.open("xb") as target_file:
                 while True:
                     chunk = source_file.read(1024 * 1024)
