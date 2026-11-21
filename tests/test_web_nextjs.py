@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
 
 from customizer.cli import main
 
+from customizer.sync import SyncPlanError, create_sync_candidate, create_sync_plan
 from customizer.web_nextjs import _unified_diff, apply_nextjs_branding, create_nextjs_branding_plan
 
 
@@ -329,3 +333,122 @@ def test_unified_diff_marks_oversized_text_instead_of_emitting_it():
 
     assert diff is None
     assert diff_format == "omitted_size_limit"
+
+
+def _git(root: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(root), *args],
+        check=True, capture_output=True, text=True,
+    )
+    return result.stdout.strip()
+
+
+def _commit_all(root: Path, message: str) -> str:
+    _git(root, "add", "-A")
+    _git(root, "commit", "-m", message)
+    return _git(root, "rev-parse", "HEAD")
+
+
+def _initialize_branding_sync_repo(source: Path) -> str:
+    _git(source, "init", "-q")
+    _git(source, "config", "user.email", "tests@example.invalid")
+    _git(source, "config", "user.name", "USC tests")
+    registry = {
+        "schema_version": "1.0",
+        "project_id": "fixture-nextjs",
+        "customizations": [{
+            "id": "nextjs-branding",
+            "name": "Next.js branding",
+            "purpose": "Protect adapter-managed product branding",
+            "category": "feature_workflow",
+            "protection_mode": "require_regression_tests",
+            "paths": [
+                {"path": "app/layout.tsx", "ownership": "mixed"},
+                {"path": "app/globals.css", "ownership": "mixed"},
+                {"path": "app/page.tsx", "ownership": "mixed"},
+            ],
+            "test_ids": ["nextjs-branding-regression"],
+        }],
+    }
+    (source / ".usc" / "customizations.json").write_text(
+        json.dumps(registry), encoding="utf-8",
+    )
+    return _commit_all(source, "upstream baseline with branding protection registry")
+
+
+def _prepare_upstream_and_local_branding(
+    tmp_path: Path, *, conflicting_upstream_edit: bool,
+) -> tuple[Path, Path, Path, str, str]:
+    source, project, branding = project_fixture(tmp_path)
+    base = _initialize_branding_sync_repo(source)
+
+    layout = source / "app" / "layout.tsx"
+    content = layout.read_text(encoding="utf-8")
+    if conflicting_upstream_edit:
+        content = content.replace(
+            'title: "Fixture Product",',
+            'title: "Upstream Product",',
+        )
+    else:
+        content += "\n// Upstream-only accessibility metadata improvement.\n"
+    layout.write_text(content, encoding="utf-8")
+    target = _commit_all(source, "upstream update to Next.js layout")
+    _git(source, "branch", "upstream/nextjs-branding-test", target)
+    _git(source, "reset", "--hard", base)
+
+    apply_result = apply_approved(source, project, branding)
+    assert apply_result["status"] == "applied"
+    customized = _commit_all(source, "apply local product branding")
+    return source, project, branding, base, target
+
+
+def test_upstream_non_overlapping_layout_change_preserves_applied_branding_in_candidate(tmp_path):
+    source, project, branding, base, target = _prepare_upstream_and_local_branding(
+        tmp_path, conflicting_upstream_edit=False,
+    )
+    original_head = _git(source, "rev-parse", "HEAD")
+
+    plan = create_sync_plan(source, base, target)
+
+    assert plan["status"] == "ready_for_review"
+    assert plan["merge_conflicts"] == []
+    assert plan["required_customization_test_ids"] == ["nextjs-branding-regression"]
+
+    candidate_path = tmp_path / "candidate"
+    candidate = create_sync_candidate(
+        source, base, target, candidate_path, approved=True,
+    )
+
+    assert candidate["status"] == "candidate_ready_for_review"
+    layout = (candidate_path / "app" / "layout.tsx").read_text(encoding="utf-8")
+    assert 'title: "My PNG Product"' in layout
+    assert "A locally customized product" in layout
+    assert "Upstream-only accessibility metadata improvement" in layout
+    assert "--usc-primary: #123456" in (candidate_path / "app" / "globals.css").read_text(encoding="utf-8")
+    assert 'alt="My PNG Product"' in (candidate_path / "app" / "page.tsx").read_text(encoding="utf-8")
+    assert (candidate_path / "public" / "usc-brand-logo.svg").is_file()
+    assert (candidate_path / "public" / "usc-brand-favicon.ico").is_file()
+    assert (candidate_path / "LICENSE").read_bytes() == (source / "LICENSE").read_bytes()
+    assert _git(source, "rev-parse", "HEAD") == original_head
+    assert "Upstream-only accessibility metadata improvement" not in (source / "app" / "layout.tsx").read_text(encoding="utf-8")
+
+
+def test_upstream_edit_to_same_branding_marker_blocks_without_losing_local_branding(tmp_path):
+    source, project, branding, base, target = _prepare_upstream_and_local_branding(
+        tmp_path, conflicting_upstream_edit=True,
+    )
+    original_head = _git(source, "rev-parse", "HEAD")
+
+    plan = create_sync_plan(source, base, target)
+
+    assert plan["status"] == "blocked"
+    assert "app/layout.tsx" in plan["merge_conflicts"]
+    candidate_path = tmp_path / "candidate"
+    with pytest.raises(SyncPlanError, match="plan is blocked by conflicts"):
+        create_sync_candidate(
+            source, base, target, candidate_path, approved=True,
+        )
+
+    assert not candidate_path.exists()
+    assert _git(source, "rev-parse", "HEAD") == original_head
+    assert 'title: "My PNG Product"' in (source / "app" / "layout.tsx").read_text(encoding="utf-8")

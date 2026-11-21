@@ -54,7 +54,7 @@
 - [x] Keep licence/notice files outside the adapter write allowlist and test that they remain byte-for-byte unchanged.
 - [x] Generate deterministic unified diffs for UTF-8 text changes and an explicit binary/size-limit marker; return a per-file application change report.
 - [x] Test unrelated files, the MIT licence, NOTICE, and USC upstream-baseline metadata remain unchanged.
-- [ ] Test that later upstream updates preserve branding changes or stop on conflicts.
+- [x] Test that non-overlapping upstream updates preserve applied branding in an isolated candidate, while edits to the same USC branding marker block without changing the customized repository.
 
 ## Phase 6 — Isolated build and provenance
 
