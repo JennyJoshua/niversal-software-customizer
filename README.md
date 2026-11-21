@@ -50,7 +50,7 @@ Build evidence is validated against a versioned JSON Schema and records the appr
 
 ## Build provenance manifest (in progress)
 
-The detached build provenance contract is documented in [docs/build-provenance-model.md](docs/build-provenance-model.md) and its strict Draft 2020-12 schema is [build-provenance.schema.json](engine/customizer/schemas/build-provenance.schema.json). This is currently a schema/documentation milestone only: manifest construction, evidence digest verification, exact Git-tree-to-staged-snapshot binding, and upstream provenance cross-checks are not yet implemented. No manifest is written to a project automatically.
+The detached build provenance contract is documented in [docs/build-provenance-model.md](docs/build-provenance-model.md) and its strict Draft 2020-12 schema is [build-provenance.schema.json](engine/customizer/schemas/build-provenance.schema.json). The builder API create_build_provenance_manifest validates the evidence file, reconstructs the exact Git-bound source snapshot, re-inventories artifacts, cross-checks accepted upstream provenance, and hashes customization/project/branding configuration inputs. It returns a detached manifest object and does not write into a project automatically. The manifest is not digitally signed and does not prove evidence-producer authenticity. Actual in-image toolchain inventory, a user-facing CLI, and failure-injection coverage remain outstanding.
 
 ## Repository identity
 
