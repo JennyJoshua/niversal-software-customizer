@@ -64,3 +64,8 @@ usc customize-plan --path ./project --project-config ./project.json --branding-c
 ```
 
 The customize-apply command requires that exact reviewed report via --plan-report, plus explicit --approve. The resulting JSON application report includes the per-file change report and hashes for applied files. If configuration, source files, or targets changed after review, application blocks and requires a fresh plan.
+
+
+## Branding and later upstream updates
+
+Branding changes are ordinary customized source changes; the adapter does not bypass the upstream synchronization safeguards. The customization registry should declare adapter-managed source files and their ownership/protection mode. A non-overlapping upstream edit may be integrated into an isolated candidate while the applied branding remains intact, subject to required regression-test evidence. An upstream edit to the same branding marker that produces a Git conflict blocks candidate creation. USC never chooses an automatic conflict resolution, and the original customized repository remains unchanged until the normal verification and explicit acceptance workflow is completed.
