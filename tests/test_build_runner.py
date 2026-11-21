@@ -147,6 +147,7 @@ def test_runner_uses_restricted_container_and_reports_success(tmp_path, monkeypa
     monkeypatch.setattr("customizer.build_runner.shutil.which", lambda _name: "/usr/bin/docker")
     monkeypatch.setattr("customizer.build_runner.subprocess.run", fake_run)
     monkeypatch.setattr("customizer.build_runner.subprocess.Popen", FakeProcess)
+    monkeypatch.setattr("customizer.build_runner._probe_toolchain", lambda *args, **kwargs: [])
 
     report = run_isolated_build(
         source, output, image=IMAGE, command=["python", "-m", "pytest"],
@@ -240,6 +241,7 @@ def test_runner_marks_container_cleanup_failure_as_blocked(tmp_path, monkeypatch
     monkeypatch.setattr("customizer.build_runner.shutil.which", lambda _name: "/usr/bin/docker")
     monkeypatch.setattr("customizer.build_runner.subprocess.run", fake_run)
     monkeypatch.setattr("customizer.build_runner.subprocess.Popen", FakeProcess)
+    monkeypatch.setattr("customizer.build_runner._probe_toolchain", lambda *args, **kwargs: [])
 
     report = run_isolated_build(
         source, output, image=IMAGE, command=["python", "-m", "pytest"],
@@ -309,6 +311,7 @@ def test_runner_kills_container_when_log_limit_is_exceeded(tmp_path, monkeypatch
     monkeypatch.setattr("customizer.build_runner.shutil.which", lambda _name: "/usr/bin/docker")
     monkeypatch.setattr("customizer.build_runner.subprocess.run", fake_run)
     monkeypatch.setattr("customizer.build_runner.subprocess.Popen", FakeProcess)
+    monkeypatch.setattr("customizer.build_runner._probe_toolchain", lambda *args, **kwargs: [])
 
     report = run_isolated_build(
         source, output, image=IMAGE, command=["python", "-m", "pytest"],
@@ -374,6 +377,7 @@ def test_runner_stops_execution_at_timeout(tmp_path, monkeypatch):
     monkeypatch.setattr("customizer.build_runner.shutil.which", lambda _name: "/usr/bin/docker")
     monkeypatch.setattr("customizer.build_runner.subprocess.run", fake_run)
     monkeypatch.setattr("customizer.build_runner.subprocess.Popen", FakeProcess)
+    monkeypatch.setattr("customizer.build_runner._probe_toolchain", lambda *args, **kwargs: [])
     monkeypatch.setattr("customizer.build_runner.selectors.DefaultSelector", FakeSelector)
     clock = iter([100.0, 102.0, 102.0])
     monkeypatch.setattr("customizer.build_runner.time.monotonic", lambda: next(clock))
@@ -486,6 +490,7 @@ def test_runner_records_missing_command_and_nonzero_exit_without_source_mutation
     monkeypatch.setattr("customizer.build_runner.shutil.which", lambda _name: "/usr/bin/docker")
     monkeypatch.setattr("customizer.build_runner.subprocess.run", fake_run)
     monkeypatch.setattr("customizer.build_runner.subprocess.Popen", FakeProcess)
+    monkeypatch.setattr("customizer.build_runner._probe_toolchain", lambda *args, **kwargs: [])
 
     report = run_isolated_build(
         source, output, image=IMAGE, command=["missing-build-tool"],
@@ -577,6 +582,7 @@ def test_runner_cleans_up_after_interrupted_execution_without_mutating_source(tm
     monkeypatch.setattr("customizer.build_runner.shutil.which", lambda _name: "/usr/bin/docker")
     monkeypatch.setattr("customizer.build_runner.subprocess.run", fake_run)
     monkeypatch.setattr("customizer.build_runner.subprocess.Popen", FakeProcess)
+    monkeypatch.setattr("customizer.build_runner._probe_toolchain", lambda *args, **kwargs: [])
     monkeypatch.setattr("customizer.build_runner.selectors.DefaultSelector", FakeSelector)
 
     with pytest.raises(KeyboardInterrupt):
