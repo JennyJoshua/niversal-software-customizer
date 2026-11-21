@@ -6,6 +6,8 @@ import json
 import os
 import re
 import stat
+import shutil
+import subprocess
 from functools import lru_cache
 from pathlib import Path
 
@@ -113,3 +115,116 @@ def validate_build_evidence(report: dict) -> None:
         first = errors[0]
         location = ".".join(str(part) for part in first.path) or "report"
         raise ValueError(f"Invalid build evidence at {location}: {first.message}")
+
+
+def inspect_git_source(source_path: str | Path) -> dict:
+    """Return exact Git identity only when the worktree and raw tracked files match HEAD."""
+    root = Path(source_path).resolve(strict=True)
+
+    def unavailable(reason: str) -> dict:
+        return {
+            "source_git_commit_sha": None,
+            "source_git_tree_sha": None,
+            "source_worktree_clean": False,
+            "source_git_identity_error": reason,
+        }
+
+    git = shutil.which("git")
+    if not git:
+        return unavailable("Git is unavailable; exact source revision identity could not be established.")
+
+    env = os.environ.copy()
+    for key in (
+        "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR",
+        "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT",
+    ):
+        env.pop(key, None)
+    env.update({
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_TERMINAL_PROMPT": "0",
+        "GIT_OPTIONAL_LOCKS": "0",
+        "GIT_PAGER": "cat",
+    })
+
+    def run_git(*args: str, input_bytes: bytes | None = None) -> subprocess.CompletedProcess:
+        try:
+            return subprocess.run(
+                [git, "-c", f"core.hooksPath={os.devnull}", "-c", "protocol.file.allow=never", "-C", str(root), *args],
+                input=input_bytes,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+                timeout=60,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise RuntimeError(f"Git source identity check could not complete: {exc}") from exc
+
+    try:
+        top = run_git("rev-parse", "--show-toplevel")
+        if top.returncode != 0:
+            return unavailable("Source directory is not inside a readable Git working repository.")
+        top_path = Path(os.fsdecode(top.stdout.strip())).resolve(strict=True)
+        if top_path != root:
+            return unavailable("Source directory must be the Git repository root for exact source identity.")
+
+        head = run_git("rev-parse", "--verify", "HEAD^{commit}")
+        tree = run_git("rev-parse", "--verify", "HEAD^{tree}")
+        if head.returncode != 0 or tree.returncode != 0:
+            return unavailable("Git HEAD commit/tree identity could not be resolved.")
+        commit_sha = os.fsdecode(head.stdout.strip()).lower()
+        tree_sha = os.fsdecode(tree.stdout.strip()).lower()
+
+        status = run_git("status", "--porcelain=v1", "--untracked-files=all")
+        if status.returncode != 0 or status.stdout:
+            return unavailable("Git worktree or index is dirty; exact source identity is unavailable.")
+        clean_preview = run_git("clean", "-ndx")
+        if clean_preview.returncode != 0 or clean_preview.stdout:
+            return unavailable("Ignored or untracked files are present; exact source identity is unavailable.")
+
+        listing = run_git("ls-files", "--stage", "-z")
+        if listing.returncode != 0:
+            return unavailable("Tracked source file inventory could not be read.")
+        expected_blobs: list[bytes] = []
+        paths: list[bytes] = []
+        for record in listing.stdout.split(b"\\x00"):
+            if not record:
+                continue
+            try:
+                header, path_bytes = record.split(b"\\t", 1)
+                mode, blob_sha, stage = header.split()
+            except ValueError:
+                return unavailable("Git returned an invalid tracked-file index record.")
+            if stage != b"0" or mode not in {b"100644", b"100755"}:
+                return unavailable("Tracked source contains a conflict stage, symlink, submodule, or non-regular entry.")
+            path = root / os.fsdecode(path_bytes)
+            try:
+                metadata = path.stat(follow_symlinks=False)
+            except OSError:
+                return unavailable("A tracked source file is missing or unreadable.")
+            if not stat.S_ISREG(metadata.st_mode):
+                return unavailable("A tracked source path is not a regular file.")
+            executable = bool(metadata.st_mode & 0o111)
+            if executable != (mode == b"100755"):
+                return unavailable("A tracked source file's executable mode differs from its Git tree mode.")
+            expected_blobs.append(blob_sha)
+            paths.append(path_bytes)
+
+        if paths:
+            hashed = run_git("hash-object", "--no-filters", "--stdin-paths", "-z", input_bytes=b"\\x00".join(paths) + b"\\x00")
+            if hashed.returncode != 0:
+                return unavailable("Raw tracked source contents could not be compared with Git blobs.")
+            actual_blobs = hashed.stdout.splitlines()
+            if actual_blobs != expected_blobs:
+                return unavailable("Raw tracked source contents differ from the exact Git tree (including filter/smudge differences).")
+
+        return {
+            "source_git_commit_sha": commit_sha,
+            "source_git_tree_sha": tree_sha,
+            "source_worktree_clean": True,
+            "source_git_identity_error": None,
+        }
+    except RuntimeError as exc:
+        return unavailable(str(exc))
