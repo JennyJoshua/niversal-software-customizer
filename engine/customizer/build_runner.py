@@ -6,7 +6,6 @@ import re
 import selectors
 import shutil
 import subprocess
-import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -57,6 +56,10 @@ def _validate_request(
         raise ValueError("Output directory must be separate from, and not an ancestor or descendant of, the source directory.")
     if "," in str(source) or "," in str(output):
         raise ValueError("Source and output paths must not contain commas.")
+    if not hasattr(os, "getuid") or not hasattr(os, "getgid") or os.getuid() == 0:
+        raise ValueError("The host runner must execute as a non-root user.")
+    if not os.access(output, os.W_OK | os.X_OK):
+        raise ValueError("Output directory must be writable by the non-root host runner.")
     return source, output, args
 
 
@@ -146,7 +149,7 @@ def run_isolated_build(
     docker_argv = [
         docker, "run", "--rm", "--pull=never",
         "--network=none", "--read-only",
-        "--user=65532:65532", "--cap-drop=ALL",
+        f"--user={os.getuid()}:{os.getgid()}", "--cap-drop=ALL",
         "--security-opt=no-new-privileges:true",
         "--pids-limit=64", "--memory=512m", "--cpus=1.0",
         "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=64m",
@@ -159,47 +162,53 @@ def run_isolated_build(
         image, *args,
     ]
 
+    process = None
     try:
-        with tempfile.TemporaryDirectory(prefix="usc-build-"):
-            process = subprocess.Popen(
-                docker_argv,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                close_fds=True,
-            )
-            assert process.stdout is not None
-            selector = selectors.DefaultSelector()
-            selector.register(process.stdout, selectors.EVENT_READ)
-            deadline = time.monotonic() + timeout_seconds
-            try:
-                while selector.get_map():
-                    remaining = deadline - time.monotonic()
-                    if remaining <= 0:
-                        status = "timed_out"
+        process = subprocess.Popen(
+            docker_argv,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            close_fds=True,
+        )
+        assert process.stdout is not None
+        selector = selectors.DefaultSelector()
+        selector.register(process.stdout, selectors.EVENT_READ)
+        deadline = time.monotonic() + timeout_seconds
+        try:
+            while selector.get_map():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    status = "timed_out"
+                    process.kill()
+                    break
+                for key, _ in selector.select(timeout=min(0.1, remaining)):
+                    chunk = os.read(key.fd, 65536)
+                    if not chunk:
+                        selector.unregister(key.fileobj)
+                        continue
+                    available = max_log_bytes - len(logs)
+                    if len(chunk) > available:
+                        logs.extend(chunk[:available])
+                        status = "output_limit_exceeded"
                         process.kill()
                         break
-                    for key, _ in selector.select(timeout=min(0.1, remaining)):
-                        chunk = os.read(key.fd, 65536)
-                        if not chunk:
-                            selector.unregister(key.fileobj)
-                            continue
-                        available = max_log_bytes - len(logs)
-                        if len(chunk) > available:
-                            logs.extend(chunk[:available])
-                            status = "output_limit_exceeded"
-                            process.kill()
-                            break
-                        logs.extend(chunk)
-                    if status in {"timed_out", "output_limit_exceeded"}:
-                        break
-                exit_code = process.wait(timeout=5)
-                if status not in {"timed_out", "output_limit_exceeded"}:
-                    status = "passed" if exit_code == 0 else "failed"
-            finally:
-                selector.close()
-                process.stdout.close()
+                    logs.extend(chunk)
+                if status in {"timed_out", "output_limit_exceeded"}:
+                    break
+            exit_code = process.wait(timeout=5)
+            if status not in {"timed_out", "output_limit_exceeded"}:
+                status = "passed" if exit_code == 0 else "failed"
+        finally:
+            selector.close()
+            process.stdout.close()
     except (OSError, subprocess.TimeoutExpired) as exc:
+        if process is not None and process.poll() is None:
+            process.kill()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
         status = "blocked_isolation_unavailable"
         logs.extend(str(exc).encode("utf-8", errors="replace")[:max_log_bytes])
     finally:
