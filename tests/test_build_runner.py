@@ -241,12 +241,21 @@ def test_runner_marks_container_cleanup_failure_as_blocked(tmp_path, monkeypatch
     monkeypatch.setattr("customizer.build_runner.shutil.which", lambda _name: "/usr/bin/docker")
     monkeypatch.setattr("customizer.build_runner.subprocess.run", fake_run)
     monkeypatch.setattr("customizer.build_runner.subprocess.Popen", FakeProcess)
-    monkeypatch.setattr("customizer.build_runner._probe_toolchain", lambda *args, **kwargs: [])
+    inventory = [{
+        "name": "python",
+        "status": "available",
+        "exit_code": 0,
+        "version": "Python 3.12.4",
+        "output_sha256": "c" * 64,
+    }]
+    monkeypatch.setattr("customizer.build_runner._probe_toolchain", lambda *args, **kwargs: inventory)
 
     report = run_isolated_build(
         source, output, image=IMAGE, command=["python", "-m", "pytest"],
         approved=True,
     )
+    assert report["toolchain_inventory"] == inventory
+    assert report["toolchain_inventory_sha256"] == _toolchain_inventory_digest(inventory)
     assert report["status"] == "blocked_cleanup_failed"
     assert report["container_cleanup_confirmed"] is False
     assert baseline.read_bytes() == before
