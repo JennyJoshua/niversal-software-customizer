@@ -67,7 +67,7 @@
 - [ ] Complete source-secret review controls and bind build evidence to the accepted upstream baseline and sync history.
 - [ ] Add a reviewed command-profile/CLI approval workflow; current runner remains an internal API.
 - [x] Define a detached, versioned build provenance manifest contract and strict JSON Schema covering source, upstream, customization, build evidence, artifact hashes, and no-release state (PR #58; 239 tests passed).
-- [ ] Implement manifest construction, digest verification, exact Git-tree-to-snapshot binding, and accepted-sync provenance cross-checks.
+- [x] Implement detached manifest construction, evidence/artifact digest verification, exact Git-tree-to-snapshot revalidation, and accepted-sync provenance cross-checks (PR #61; 254 tests passed).
 - [ ] Strengthen secret prevention beyond known-path exclusions and best-effort log redaction before customer use.
 - [ ] Produce artifacts without automatic public release; add failure-injection coverage for output-path and export edge cases.
 
