@@ -299,14 +299,15 @@ def _build_plan(
     operations = []
     for relative in sorted(payloads):
         _, updated, original = payloads[relative]
+        diff, diff_format = _unified_diff(relative, original, updated)
         operations.append({
             "path": relative,
             "operation": "create" if original is None else "update_marked_block",
             "before_sha256": _digest(original) if original is not None else None,
             "after_sha256": _digest(updated),
             "reason": "Explicitly allowlisted Next.js branding surface or USC-owned asset target.",
-            "diff": _unified_diff(relative, original, updated)[0],
-            "diff_format": _unified_diff(relative, original, updated)[1],
+            "diff": diff,
+            "diff_format": diff_format,
         })
     report = {
         "schema_version": "1.0",
