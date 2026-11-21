@@ -617,7 +617,7 @@ def test_toolchain_probe_captures_version_in_network_disabled_disposable_contain
         def __init__(self, argv, **_kwargs):
             captured.append(argv)
             read_fd, write_fd = os.pipe()
-            os.write(write_fd, b"Python 3.12.4\\n")
+            os.write(write_fd, b"Python 3.12.4\n")
             os.close(write_fd)
             self.stdout = os.fdopen(read_fd, "rb")
             self.returncode = 0
@@ -642,7 +642,7 @@ def test_toolchain_probe_captures_version_in_network_disabled_disposable_contain
         "status": "available",
         "exit_code": 0,
         "version": "Python 3.12.4",
-        "output_sha256": hashlib.sha256(b"Python 3.12.4\\n").hexdigest(),
+        "output_sha256": hashlib.sha256(b"Python 3.12.4\n").hexdigest(),
     }]
     argv = captured[0]
     assert "--network=none" in argv
