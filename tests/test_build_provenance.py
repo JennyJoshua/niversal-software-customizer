@@ -64,6 +64,7 @@ def _manifest():
             "source_snapshot_sha256": digest,
             "artifact_inventory_sha256": digest,
             "docker_engine_version": "27.0",
+            "toolchain_inventory_sha256": hashlib.sha256(b"[]").hexdigest(),
         },
         "artifacts": [
             {"path": "artifacts/app.zip", "size_bytes": 123, "sha256": digest}
@@ -219,6 +220,8 @@ def _write_evidence(root: Path, evidence_root: Path, artifacts_root: Path) -> tu
         "artifact_exported": True,
         "artifact_inventory": inventory,
         "artifact_inventory_sha256": inventory_sha,
+        "toolchain_inventory": [],
+        "toolchain_inventory_sha256": hashlib.sha256(b"[]").hexdigest(),
         "container_cleanup_confirmed": True,
     }
     raw = json.dumps(report, sort_keys=True, separators=(",", ":")).encode("utf-8")
