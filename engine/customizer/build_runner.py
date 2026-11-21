@@ -69,7 +69,7 @@ def _validate_request(
 
 _EXCLUDED_DIRS = {
     ".git", ".usc", ".ssh", ".aws", ".azure", ".gcloud", ".terraform",
-    ".docker", ".kube",
+    ".docker", ".kube", ".config", ".firebase",
 }
 _EXCLUDED_FILE_NAMES = {
     ".git", ".gitconfig", ".env", ".npmrc", ".pypirc", ".netrc", ".git-credentials",
@@ -110,7 +110,12 @@ def _stage_source_snapshot(source: Path, destination: Path) -> tuple[str, int]:
     file_count = 0
     excluded_count = 0
 
-    for current_text, directories, filenames in os.walk(source, topdown=True, followlinks=False):
+    def raise_walk_error(error: OSError) -> None:
+        raise error
+
+    for current_text, directories, filenames in os.walk(
+        source, topdown=True, followlinks=False, onerror=raise_walk_error,
+    ):
         current = Path(current_text)
         kept_directories = []
         for directory in sorted(directories):
