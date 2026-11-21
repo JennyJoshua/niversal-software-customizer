@@ -63,7 +63,7 @@ def test_inspect_git_source_rejects_ignored_untracked_files(tmp_path):
 
     assert identity["source_worktree_clean"] is False
     assert identity["source_git_tree_sha"] is None
-    assert "Ignored or untracked" in identity["source_git_identity_error"]
+    assert "Ignored files" in identity["source_git_identity_error"]
 
 
 def test_inspect_git_source_rejects_non_repository_root(tmp_path):
@@ -137,3 +137,15 @@ def test_staged_snapshot_normalizes_non_executable_modes_to_git_mode(tmp_path):
         expected_git_blobs=identity["_tracked_blob_sha_by_path"],
     )
     assert (snapshot / "app.py").stat().st_mode & 0o777 == 0o644
+
+
+
+def test_inspect_git_source_rejects_non_ignored_untracked_files(tmp_path):
+    root = tmp_path / "repo"
+    _committed_repo(root)
+    (root / "new.py").write_text("not committed\\n", encoding="utf-8")
+
+    identity = inspect_git_source(root)
+
+    assert identity["source_worktree_clean"] is False
+    assert "Untracked files" in identity["source_git_identity_error"]
