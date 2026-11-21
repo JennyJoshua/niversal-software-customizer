@@ -336,6 +336,9 @@ def test_upstream_context_rejects_mismatched_baseline_and_provenance(tmp_path):
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
     baseline["last_imported_upstream_sha"] = "f" * 40
     baseline_path.write_text(json.dumps(baseline), encoding="utf-8")
+    _git(source, "add", ".usc/upstream-baseline.json")
+    _git(source, "commit", "-qm", "fixture deliberately mismatched baseline")
+    identity = inspect_git_source(source)
 
     with pytest.raises(ValueError, match="target SHA does not match"):
-        _upstream_context(source)
+        _upstream_context(source, identity["_tracked_blob_sha_by_path"])
