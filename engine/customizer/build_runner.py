@@ -483,6 +483,8 @@ def run_isolated_build(
             "errors": ["The digest-pinned image is not available locally; image pulling is disabled."],
         })
     docker_image_id = image_probe.stdout.strip()
+    toolchain_inventory = _probe_toolchain(docker, image, run_label)
+    toolchain_inventory_sha256 = _toolchain_inventory_digest(toolchain_inventory)
 
     run_label = f"com.usc.build-run={uuid.uuid4().hex}"
     logs = bytearray()
@@ -504,6 +506,8 @@ def run_isolated_build(
     }
     artifact_inventory = []
     artifact_inventory_sha256 = hashlib.sha256(b"[]").hexdigest()
+    toolchain_inventory = []
+    toolchain_inventory_sha256 = _toolchain_inventory_digest(toolchain_inventory)
     started_at = None
     started_monotonic = None
     errors = []
@@ -650,6 +654,8 @@ def run_isolated_build(
         "image": image,
         "docker_image_id": docker_image_id,
         "docker_engine_version": docker_engine_version,
+        "toolchain_inventory": toolchain_inventory,
+        "toolchain_inventory_sha256": toolchain_inventory_sha256,
         "command_argv": args,
         "command_sha256": command_sha256,
         "command_executable": args[0],
