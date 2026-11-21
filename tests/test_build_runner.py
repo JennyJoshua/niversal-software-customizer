@@ -118,6 +118,8 @@ def test_runner_uses_restricted_container_and_reports_success(tmp_path, monkeypa
     ps_calls = {"count": 0}
 
     def fake_run(argv, **kwargs):
+        if "-C" in argv:
+            return subprocess.CompletedProcess(argv, 128, stdout=b"", stderr=b"not a Git repository")
         if argv[1] == "info":
             return subprocess.CompletedProcess(argv, 0, stdout="27.0", stderr="")
         if argv[1:3] == ["image", "inspect"]:
@@ -169,6 +171,10 @@ def test_runner_uses_restricted_container_and_reports_success(tmp_path, monkeypa
     assert report["started_at"] and report["finished_at"]
     assert report["duration_seconds"] >= 0
     assert len(report["source_snapshot_sha256"]) == 64
+    assert report["source_git_commit_sha"] is None
+    assert report["source_git_tree_sha"] is None
+    assert report["source_worktree_clean"] is False
+    assert report["source_git_identity_error"]
     assert report["excluded_source_path_count"] >= 3
     assert report["logs"] == "fixture tests passed\\n"
 
@@ -195,6 +201,8 @@ def test_runner_marks_container_cleanup_failure_as_blocked(tmp_path, monkeypatch
     ps_calls = {"count": 0}
 
     def fake_run(argv, **kwargs):
+        if "-C" in argv:
+            return subprocess.CompletedProcess(argv, 128, stdout=b"", stderr=b"not a Git repository")
         if argv[1] == "info":
             return subprocess.CompletedProcess(argv, 0, stdout="27.0", stderr="")
         if argv[1:3] == ["image", "inspect"]:
@@ -260,6 +268,8 @@ def test_runner_kills_container_when_log_limit_is_exceeded(tmp_path, monkeypatch
     ps_calls = {"count": 0}
 
     def fake_run(argv, **kwargs):
+        if "-C" in argv:
+            return subprocess.CompletedProcess(argv, 128, stdout=b"", stderr=b"not a Git repository")
         if argv[1] == "info":
             return subprocess.CompletedProcess(argv, 0, stdout="27.0", stderr="")
         if argv[1:3] == ["image", "inspect"]:
@@ -322,6 +332,8 @@ def test_runner_stops_execution_at_timeout(tmp_path, monkeypatch):
             self.returncode = -9
 
     def fake_run(argv, **kwargs):
+        if "-C" in argv:
+            return subprocess.CompletedProcess(argv, 128, stdout=b"", stderr=b"not a Git repository")
         if argv[1] == "info":
             return subprocess.CompletedProcess(argv, 0, stdout="27.0", stderr="")
         if argv[1:3] == ["image", "inspect"]:

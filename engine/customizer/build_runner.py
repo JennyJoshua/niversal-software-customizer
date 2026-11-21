@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
 
-from .build_evidence import create_artifact_inventory, redact_build_logs, validate_build_evidence
+from .build_evidence import create_artifact_inventory, inspect_git_source, redact_build_logs, validate_build_evidence
 
 _PINNED_IMAGE = re.compile(r"^[^\s@]+@sha256:[0-9a-f]{64}$")
 _SHELLS = {"sh", "bash", "dash", "zsh", "fish", "cmd", "powershell", "pwsh"}
@@ -121,13 +121,29 @@ def _is_sensitive_file(relative: Path) -> bool:
     return False
 
 
-def _stage_source_snapshot(source: Path, destination: Path) -> tuple[str, int]:
-    """Copy a bounded source snapshot while excluding VCS metadata and known secret files."""
+def _stage_source_snapshot(
+    source: Path,
+    destination: Path,
+    *,
+    expected_git_blobs: dict[str, str] | None = None,
+) -> tuple[str, int]:
+    """Copy a bounded source snapshot and optionally prove each included file matches HEAD."""
     destination.mkdir(parents=True, exist_ok=False)
     digest = hashlib.sha256()
     total_bytes = 0
     file_count = 0
     excluded_count = 0
+    expected_included: dict[str, str] | None = None
+    seen_git_paths: set[str] = set()
+    if expected_git_blobs is not None:
+        expected_included = {}
+        for relative_text, blob_sha in expected_git_blobs.items():
+            relative_path = Path(relative_text)
+            if any(part.lower() in _EXCLUDED_DIRS for part in relative_path.parts[:-1]):
+                continue
+            if _is_sensitive_file(relative_path):
+                continue
+            expected_included[relative_path.as_posix()] = blob_sha
 
     def raise_walk_error(error: OSError) -> None:
         raise error
@@ -150,16 +166,24 @@ def _stage_source_snapshot(source: Path, destination: Path) -> tuple[str, int]:
         for filename in sorted(filenames):
             path = current / filename
             relative = path.relative_to(source)
+            relative_text = relative.as_posix()
             if path.is_symlink():
-                raise ValueError(f"Source snapshot contains a symlinked file: {relative.as_posix()}")
+                raise ValueError(f"Source snapshot contains a symlinked file: {relative_text}")
             if _is_sensitive_file(relative):
                 excluded_count += 1
                 continue
+            expected_blob = None
+            if expected_included is not None:
+                expected_blob = expected_included.get(relative_text)
+                if expected_blob is None:
+                    raise ValueError(f"Source contains a file outside the inspected Git tree: {relative_text}")
+                seen_git_paths.add(relative_text)
+
             metadata = path.stat(follow_symlinks=False)
             if not stat.S_ISREG(metadata.st_mode):
-                raise ValueError(f"Source snapshot contains a non-regular file: {relative.as_posix()}")
+                raise ValueError(f"Source snapshot contains a non-regular file: {relative_text}")
             if metadata.st_size > _MAX_SINGLE_SOURCE_FILE:
-                raise ValueError(f"Source file exceeds the 50 MB per-file limit: {relative.as_posix()}")
+                raise ValueError(f"Source file exceeds the 50 MB per-file limit: {relative_text}")
             total_bytes += metadata.st_size
             file_count += 1
             if total_bytes > _MAX_SOURCE_BYTES:
@@ -167,8 +191,8 @@ def _stage_source_snapshot(source: Path, destination: Path) -> tuple[str, int]:
             if file_count > _MAX_SOURCE_FILES:
                 raise ValueError("Source snapshot exceeds the 20,000-file limit.")
 
-            relative_bytes = os.fsencode(relative.as_posix())
-            mode = stat.S_IMODE(metadata.st_mode) & 0o777
+            relative_bytes = os.fsencode(relative_text)
+            mode = 0o755 if metadata.st_mode & 0o111 else 0o644
             digest.update(len(relative_bytes).to_bytes(4, "big"))
             digest.update(relative_bytes)
             digest.update(mode.to_bytes(4, "big"))
@@ -177,6 +201,11 @@ def _stage_source_snapshot(source: Path, destination: Path) -> tuple[str, int]:
             target = destination / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             copied_bytes = 0
+            git_blob_digest = None
+            if expected_blob is not None:
+                algorithm = "sha1" if len(expected_blob) == 40 else "sha256"
+                git_blob_digest = hashlib.new(algorithm)
+                git_blob_digest.update(f"blob {metadata.st_size}\0".encode("ascii"))
             with path.open("rb") as source_file, target.open("xb") as target_file:
                 while True:
                     chunk = source_file.read(1024 * 1024)
@@ -184,15 +213,27 @@ def _stage_source_snapshot(source: Path, destination: Path) -> tuple[str, int]:
                         break
                     copied_bytes += len(chunk)
                     if copied_bytes > _MAX_SINGLE_SOURCE_FILE:
-                        raise ValueError(f"Source file grew beyond the per-file limit during snapshot: {relative.as_posix()}")
+                        raise ValueError(f"Source file grew beyond the per-file limit during snapshot: {relative_text}")
                     digest.update(chunk)
+                    if git_blob_digest is not None:
+                        git_blob_digest.update(chunk)
                     target_file.write(chunk)
-            if copied_bytes != metadata.st_size:
-                raise ValueError(f"Source file changed while the snapshot was being staged: {relative.as_posix()}")
+            after = path.stat(follow_symlinks=False)
+            if (
+                copied_bytes != metadata.st_size
+                or after.st_size != metadata.st_size
+                or after.st_mtime_ns != metadata.st_mtime_ns
+                or after.st_ino != metadata.st_ino
+            ):
+                raise ValueError(f"Source file changed while the snapshot was being staged: {relative_text}")
+            if git_blob_digest is not None and git_blob_digest.hexdigest() != expected_blob:
+                raise ValueError(f"Staged source file does not match its exact Git tree blob: {relative_text}")
             os.chmod(target, mode)
 
+    if expected_included is not None and seen_git_paths != set(expected_included):
+        missing = sorted(set(expected_included) - seen_git_paths)
+        raise ValueError("Source snapshot is missing tracked Git files: " + ", ".join(missing[:10]))
     return digest.hexdigest(), excluded_count
-
 
 def _labelled_container_ids(docker: str, label: str) -> list[str] | None:
     try:
@@ -331,6 +372,12 @@ def run_isolated_build(
     process = None
     source_snapshot_sha256 = None
     excluded_source_path_count = 0
+    source_git_identity = {
+        "source_git_commit_sha": None,
+        "source_git_tree_sha": None,
+        "source_worktree_clean": False,
+        "source_git_identity_error": "Source Git identity has not been inspected.",
+    }
     artifact_inventory = []
     artifact_inventory_sha256 = hashlib.sha256(b"[]").hexdigest()
     started_at = None
@@ -342,7 +389,14 @@ def run_isolated_build(
     try:
         with tempfile.TemporaryDirectory(prefix="usc-build-") as temporary_root:
             staged_source = Path(temporary_root) / "source"
-            source_snapshot_sha256, excluded_source_path_count = _stage_source_snapshot(source, staged_source)
+            source_git_identity = inspect_git_source(source)
+            expected_git_blobs = (
+                source_git_identity.get("_tracked_blob_sha_by_path")
+                if source_git_identity["source_worktree_clean"] else None
+            )
+            source_snapshot_sha256, excluded_source_path_count = _stage_source_snapshot(
+                source, staged_source, expected_git_blobs=expected_git_blobs,
+            )
             if "," in str(staged_source):
                 raise ValueError("Temporary snapshot path must not contain commas.")
             docker_argv = [
@@ -474,6 +528,10 @@ def run_isolated_build(
         "artifact_inventory": artifact_inventory,
         "artifact_inventory_sha256": artifact_inventory_sha256,
         "source_snapshot_sha256": source_snapshot_sha256,
+        "source_git_commit_sha": source_git_identity["source_git_commit_sha"],
+        "source_git_tree_sha": source_git_identity["source_git_tree_sha"],
+        "source_worktree_clean": source_git_identity["source_worktree_clean"],
+        "source_git_identity_error": source_git_identity["source_git_identity_error"],
         "excluded_source_path_count": excluded_source_path_count,
         "network_disabled": True,
         "container_cleanup_confirmed": cleanup_ok,
