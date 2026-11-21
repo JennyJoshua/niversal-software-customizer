@@ -178,6 +178,7 @@ def run_isolated_build(
     status = "failed"
     exit_code = None
     cleanup_ok = True
+    artifact_exported = False
     docker_argv = [
         docker, "run", "--pull=never",
         "--network=none", "--read-only",
@@ -234,7 +235,8 @@ def run_isolated_build(
                     status = "blocked_isolation_unavailable"
                 else:
                     status = "passed" if exit_code == 0 else "failed"
-                    if not _export_container_output(docker, run_label, output):
+                    artifact_exported = _export_container_output(docker, run_label, output)
+                    if not artifact_exported:
                         status = "artifact_export_failed"
         finally:
             selector.close()
@@ -266,7 +268,7 @@ def run_isolated_build(
         "logs": logs.decode("utf-8", errors="replace"),
         "source_read_only": True,
         "output_path": str(output),
-        "artifact_exported": status in {"passed", "failed"},
+        "artifact_exported": artifact_exported,
         "network_disabled": True,
         "container_cleanup_confirmed": cleanup_ok,
         "note": "No host environment variables or credentials were forwarded. The image was not pulled; it had to be pre-provisioned locally.",
