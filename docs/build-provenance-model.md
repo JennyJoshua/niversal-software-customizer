@@ -37,6 +37,16 @@ The source Git tree identity and staged snapshot digest are separate values. The
 - Treat missing evidence, mismatched digests, dirty source state, or unresolved source-to-snapshot binding as a blocked verification.
 - Never infer that a passing build grants release approval.
 
-## Implementation sequence
+## Current implementation
 
-The first implementation batch defines this contract and a strict schema. Follow-on work will add source-tree capture/binding, manifest construction and validation, and failure-injection tests. Until those controls are complete, use synthetic fixtures only.
+- The versioned schema is in engine/customizer/schemas/build-provenance.schema.json.
+- The runner records Git commit/tree identity only when the index and raw tracked files match HEAD, and verifies each included staged file against its Git blob.
+- create_build_provenance_manifest reads the exact evidence file from a separate evidence directory, validates its schema, reconstructs and re-hashes the source snapshot, re-inventories artifacts, checks accepted upstream baseline/provenance, and hashes customization/project/branding configuration inputs.
+- The function returns a manifest object only. It does not write to the source repository or publish artifacts.
+
+## Remaining limitations
+
+- The manifest is not digitally signed and does not prove who produced the build evidence. SHA-256 values provide integrity comparisons, not producer authenticity.
+- The source-secret exclusion rules and log redaction remain best-effort controls, not a complete secret scanner.
+- Actual in-image toolchain inventory, a user-facing CLI, and failure-injection coverage remain outstanding.
+- Use synthetic fixtures only until the remaining Phase 6 safeguards and reviewed command-profile workflow are complete.
