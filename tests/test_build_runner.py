@@ -196,3 +196,111 @@ def test_runner_requires_an_empty_output_directory(tmp_path):
     )
     assert report["status"] == "blocked_invalid_request"
     assert (output / "existing.txt").read_text(encoding="utf-8") == "keep"
+
+
+
+def test_runner_kills_container_when_log_limit_is_exceeded(tmp_path, monkeypatch):
+    source, output = _paths(tmp_path)
+    killed = {"value": False}
+
+    class FakeProcess:
+        def __init__(self, _argv, **_kwargs):
+            read_fd, write_fd = os.pipe()
+            os.write(write_fd, b"x" * 2048)
+            os.close(write_fd)
+            self.stdout = os.fdopen(read_fd, "rb")
+            self.returncode = 0
+
+        def poll(self):
+            return self.returncode
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+        def kill(self):
+            killed["value"] = True
+            self.returncode = -9
+
+    ps_calls = {"count": 0}
+
+    def fake_run(argv, **kwargs):
+        if argv[1] == "info":
+            return subprocess.CompletedProcess(argv, 0, stdout="27.0", stderr="")
+        if argv[1:3] == ["ps", "-aq"]:
+            ps_calls["count"] += 1
+            found = "fixture-container" if ps_calls["count"] == 1 else ""
+            return subprocess.CompletedProcess(argv, 0, stdout=found, stderr="")
+        if argv[1:3] == ["rm", "-f"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+        raise AssertionError(f"Unexpected host command: {argv}")
+
+    monkeypatch.setattr("customizer.build_runner.shutil.which", lambda _name: "/usr/bin/docker")
+    monkeypatch.setattr("customizer.build_runner.subprocess.run", fake_run)
+    monkeypatch.setattr("customizer.build_runner.subprocess.Popen", FakeProcess)
+
+    report = run_isolated_build(
+        source, output, image=IMAGE, command=["python", "-m", "pytest"],
+        approved=True, max_log_bytes=1024,
+    )
+    assert report["status"] == "output_limit_exceeded"
+    assert report["log_bytes"] == 1024
+    assert report["log_truncated"] is True
+    assert killed["value"] is True
+    assert report["container_cleanup_confirmed"] is True
+
+
+def test_runner_stops_execution_at_timeout(tmp_path, monkeypatch):
+    import io
+
+    source, output = _paths(tmp_path)
+    killed = {"value": False}
+
+    class FakeSelector:
+        def register(self, *_args, **_kwargs):
+            return None
+
+        def get_map(self):
+            return {1: object()}
+
+        def select(self, timeout=None):
+            return []
+
+        def close(self):
+            return None
+
+    class FakeProcess:
+        def __init__(self, _argv, **_kwargs):
+            self.stdout = io.BytesIO()
+            self.returncode = 0
+
+        def poll(self):
+            return self.returncode
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+        def kill(self):
+            killed["value"] = True
+            self.returncode = -9
+
+    def fake_run(argv, **kwargs):
+        if argv[1] == "info":
+            return subprocess.CompletedProcess(argv, 0, stdout="27.0", stderr="")
+        if argv[1:3] == ["ps", "-aq"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+        raise AssertionError(f"Unexpected host command: {argv}")
+
+    monkeypatch.setattr("customizer.build_runner.shutil.which", lambda _name: "/usr/bin/docker")
+    monkeypatch.setattr("customizer.build_runner.subprocess.run", fake_run)
+    monkeypatch.setattr("customizer.build_runner.subprocess.Popen", FakeProcess)
+    monkeypatch.setattr("customizer.build_runner.selectors.DefaultSelector", FakeSelector)
+    clock = iter([100.0, 102.0])
+    monkeypatch.setattr("customizer.build_runner.time.monotonic", lambda: next(clock))
+
+    report = run_isolated_build(
+        source, output, image=IMAGE, command=["python", "-m", "pytest"],
+        approved=True, timeout_seconds=1,
+    )
+    assert report["status"] == "timed_out"
+    assert killed["value"] is True
+    assert report["container_cleanup_confirmed"] is True
