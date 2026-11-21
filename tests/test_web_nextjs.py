@@ -208,3 +208,24 @@ def test_cli_apply_rejects_in_source_report_path_before_writing(tmp_path, capsys
     assert result == 2
     assert "outside the source directory" in capsys.readouterr().err
     assert snapshot(source) == before
+
+
+def test_apply_rolls_back_earlier_file_writes_when_a_later_write_fails(tmp_path, monkeypatch):
+    import customizer.web_nextjs as adapter
+
+    source, project, branding = project_fixture(tmp_path)
+    before = snapshot(source)
+    real_replace = adapter.os.replace
+    calls = {"count": 0}
+
+    def fail_second_replace(source_path, target_path):
+        calls["count"] += 1
+        if calls["count"] == 2:
+            raise OSError("simulated later write failure")
+        return real_replace(source_path, target_path)
+
+    monkeypatch.setattr(adapter.os, "replace", fail_second_replace)
+    report = apply_nextjs_branding(source, project, branding, approved=True)
+
+    assert report["status"] == "blocked_unsafe_or_unsupported"
+    assert snapshot(source) == before

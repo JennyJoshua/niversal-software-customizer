@@ -28,7 +28,13 @@ def _digest(data: bytes) -> str:
 
 
 def _load_json(path: str | Path) -> dict[str, Any]:
-    value = json.loads(Path(path).expanduser().read_text(encoding="utf-8"))
+    supplied = Path(path).expanduser()
+    if supplied.is_symlink():
+        raise ValueError(f"Configuration file must not be a symlink: {supplied}")
+    resolved = supplied.resolve(strict=True)
+    if not resolved.is_file() or resolved.stat().st_size > 1_000_000:
+        raise ValueError(f"Configuration file must be a regular file within the 1 MB limit: {supplied}")
+    value = json.loads(resolved.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
         raise ValueError("Configuration root must be a JSON object.")
     return value
@@ -326,35 +332,80 @@ def apply_nextjs_branding(
         if report["status"] not in {"ready_for_review", "no_changes_needed"}:
             return {**report, "operation": "customization_apply", "status": "blocked_plan", "files_changed": False}
         root = Path(project_root).expanduser().resolve(strict=True)
+        staged: dict[str, Path] = {}
         changed = []
-        for relative in sorted(payloads):
-            target, updated, original = payloads[relative]
-            current_target, current = _safe_target(root, relative)
-            if current != original:
-                if original is None and current == updated:
-                    continue
-                raise ValueError(f"Target changed after planning; refusing to overwrite: {relative}")
-            if original is None:
-                descriptor = os.open(current_target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
-                with os.fdopen(descriptor, "wb") as handle:
-                    handle.write(updated)
-                    handle.flush()
-                    os.fsync(handle.fileno())
-            else:
-                descriptor, temporary = tempfile.mkstemp(prefix=".usc-brand-", dir=current_target.parent)
+        committed: list[tuple[str, Path, bytes | None, bytes]] = []
+        try:
+            # Preflight every target and stage every payload before the first project write.
+            for relative in sorted(payloads):
+                target, updated, original = payloads[relative]
+                current_target, current = _safe_target(root, relative)
+                if current != original:
+                    if original is None and current == updated:
+                        continue
+                    raise ValueError(f"Target changed after planning; refusing to write: {relative}")
+                descriptor, temporary = tempfile.mkstemp(prefix=".usc-brand-stage-", dir=current_target.parent)
                 try:
                     with os.fdopen(descriptor, "wb") as handle:
                         handle.write(updated)
                         handle.flush()
                         os.fsync(handle.fileno())
-                    check_path, check_bytes = _safe_existing_file(root, relative)
-                    if check_bytes != original:
-                        raise ValueError(f"Source file changed during application; refusing to replace: {relative}")
-                    os.replace(temporary, check_path)
-                finally:
+                except Exception:
                     if os.path.exists(temporary):
                         os.unlink(temporary)
-            changed.append({"path": relative, "sha256": _digest(updated)})
+                    raise
+                staged[relative] = Path(temporary)
+
+            for relative in sorted(staged):
+                target, updated, original = payloads[relative]
+                current_target, current = _safe_target(root, relative)
+                if current != original:
+                    if original is None and current == updated:
+                        continue
+                    raise ValueError(f"Target changed during application; refusing to write: {relative}")
+                if original is None:
+                    # Hard-link creation is atomic and fails rather than replacing an existing path.
+                    os.link(staged[relative], current_target)
+                    committed.append((relative, current_target, original, updated))
+                    changed.append({"path": relative, "sha256": _digest(updated)})
+                    os.unlink(staged[relative])
+                    staged.pop(relative, None)
+                else:
+                    os.replace(staged[relative], current_target)
+                    committed.append((relative, current_target, original, updated))
+                    changed.append({"path": relative, "sha256": _digest(updated)})
+                    staged.pop(relative, None)
+        except Exception as exc:
+            rollback_errors = []
+            for relative, target, original, updated in reversed(committed):
+                try:
+                    safe_target, current = _safe_target(root, relative)
+                    if current != updated:
+                        raise ValueError(f"Refusing rollback because the file changed after write: {relative}")
+                    if original is None:
+                        safe_target.unlink()
+                    else:
+                        descriptor, temporary = tempfile.mkstemp(prefix=".usc-brand-rollback-", dir=safe_target.parent)
+                        try:
+                            with os.fdopen(descriptor, "wb") as handle:
+                                handle.write(original)
+                                handle.flush()
+                                os.fsync(handle.fileno())
+                            os.replace(temporary, safe_target)
+                        finally:
+                            if os.path.exists(temporary):
+                                os.unlink(temporary)
+                except Exception as rollback_exc:
+                    rollback_errors.append(f"{relative}: {rollback_exc}")
+            if rollback_errors:
+                raise ValueError(
+                    f"Application failed ({exc}); rollback was incomplete: " + "; ".join(rollback_errors)
+                ) from exc
+            raise
+        finally:
+            for temporary in staged.values():
+                if temporary.exists():
+                    temporary.unlink()
         return {
             "schema_version": "1.0", "operation": "customization_apply",
             "adapter_id": "web-nextjs", "status": "applied",
