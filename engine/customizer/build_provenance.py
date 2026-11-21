@@ -46,6 +46,20 @@ def _safe_relative_path(value: str, label: str) -> str:
     return path.as_posix()
 
 
+def _resolve_directory(path_value: str | Path, label: str) -> Path:
+    supplied = Path(path_value).expanduser()
+    absolute = supplied.absolute()
+    current = Path(absolute.anchor)
+    for part in absolute.parts[1:]:
+        current = current / part
+        if current.is_symlink():
+            raise ValueError(f"{label} path traverses a symlink.")
+    resolved = supplied.resolve(strict=True)
+    if not resolved.is_dir():
+        raise ValueError(f"{label} must be an existing directory.")
+    return resolved
+
+
 def _read_repository_file(root: Path, relative: str, label: str) -> bytes:
     safe = _safe_relative_path(relative, label)
     path = root
@@ -65,14 +79,13 @@ def _read_external_config(path_value: str | Path | None, label: str) -> str | No
     if path_value is None:
         return None
     path = Path(path_value).expanduser()
-    if path.is_symlink():
-        raise ValueError(f"{label} must not be a symlink.")
-    resolved = path.resolve(strict=True)
-    current = Path(resolved.anchor)
-    for part in resolved.parts[1:]:
+    absolute = path.absolute()
+    current = Path(absolute.anchor)
+    for part in absolute.parts[1:]:
         current = current / part
         if current.is_symlink():
-            raise ValueError(f"{label} traverses a symlink.")
+            raise ValueError(f"{label} path traverses a symlink.")
+    resolved = path.resolve(strict=True)
     if not resolved.is_file():
         raise ValueError(f"{label} must be a regular file.")
     if resolved.stat().st_size > _MAX_METADATA_BYTES:
@@ -132,6 +145,11 @@ def _upstream_context(root: Path) -> dict | None:
     if not usc_dir.is_dir():
         raise ValueError(".usc metadata path is not a directory.")
 
+    baseline_path = usc_dir / "upstream-baseline.json"
+    if not baseline_path.exists():
+        return None
+    if baseline_path.is_symlink() or not baseline_path.is_file():
+        raise ValueError("Upstream baseline must be a regular, non-symlink file.")
     baseline_bytes = _read_repository_file(root, ".usc/upstream-baseline.json", "Upstream baseline")
     try:
         baseline = json.loads(baseline_bytes.decode("utf-8"), object_pairs_hook=_reject_duplicate_json_keys)
@@ -160,7 +178,11 @@ def _upstream_context(root: Path) -> dict | None:
         raise ValueError("Referenced upstream provenance is not an accepted sync record.")
     if _canonical_github_url(provenance.get("upstream_repository_url"), "Provenance upstream URL") != repository_url:
         raise ValueError("Upstream baseline and provenance repository identities do not match.")
-    if str(provenance.get("upstream_target_sha", "")).lower() != baseline_sha:
+    provenance_base_sha = str(provenance.get("base_sha", "")).lower()
+    provenance_target_sha = str(provenance.get("upstream_target_sha", "")).lower()
+    if not _SHA_RE.fullmatch(provenance_base_sha) or not _SHA_RE.fullmatch(provenance_target_sha):
+        raise ValueError("Accepted upstream provenance contains an invalid base/target SHA.")
+    if provenance_target_sha != baseline_sha:
         raise ValueError("Upstream baseline target SHA does not match accepted provenance.")
     if str(provenance.get("merge_commit_sha", "")).lower() != merge_sha:
         raise ValueError("Upstream baseline merge SHA does not match accepted provenance.")
@@ -232,28 +254,34 @@ def validate_build_provenance(manifest: dict) -> None:
 
 def create_build_provenance_manifest(
     source_path: str | Path,
-    evidence_document: bytes | str,
+    evidence_root: str | Path,
+    evidence_path: str,
     artifact_path: str | Path,
     *,
-    evidence_path: str,
     project_config_path: str | Path | None = None,
     branding_config_path: str | Path | None = None,
 ) -> dict:
     """Create a detached manifest only after re-verifying source, evidence, upstream, and artifacts.
 
-    This function returns data only. It does not write into the source repository,
-    mutate Git refs, or publish/release artifacts.
+    The evidence document is read from evidence_root/evidence_path. This function
+    returns data only; it does not write into the source repository, mutate Git
+    refs, or publish/release artifacts.
     """
-    root = Path(source_path).expanduser().resolve(strict=True)
-    if not root.is_dir():
-        raise ValueError("Source path must be an existing directory.")
+    root = _resolve_directory(source_path, "Source")
+    evidence_dir = _resolve_directory(evidence_root, "Evidence")
     evidence_relative = _safe_relative_path(evidence_path, "Build evidence path")
+    artifacts_root = _resolve_directory(artifact_path, "Artifact")
+    directory_roots = [("Source", root), ("Evidence", evidence_dir), ("Artifact", artifacts_root)]
+    for index, (left_label, left) in enumerate(directory_roots):
+        for right_label, right in directory_roots[index + 1:]:
+            if left == right or left in right.parents or right in left.parents:
+                raise ValueError(f"{left_label} and {right_label} directories must be separate.")
 
-    raw_evidence = evidence_document.encode("utf-8") if isinstance(evidence_document, str) else evidence_document
-    if not isinstance(raw_evidence, bytes) or len(raw_evidence) > _MAX_EVIDENCE_BYTES:
-        raise ValueError("Build evidence document must be bytes/text and no larger than 8 MB.")
+    raw_evidence = _read_repository_file(evidence_dir, evidence_relative, "Build evidence")
+    if len(raw_evidence) > _MAX_EVIDENCE_BYTES:
+        raise ValueError("Build evidence document exceeds the 8 MB limit.")
     try:
-        report = json.loads(raw_evidence.decode("utf-8"), object_pairs_hook=_reject_duplicate_json_keys)
+    report = json.loads(raw_evidence.decode("utf-8"), object_pairs_hook=_reject_duplicate_json_keys)
     except (UnicodeError, json.JSONDecodeError) as exc:
         raise ValueError(f"Build evidence document is invalid JSON: {exc}") from exc
     if not isinstance(report, dict):
@@ -281,15 +309,6 @@ def create_build_provenance_manifest(
         raise ValueError("Reconstructed source snapshot digest does not match the build evidence.")
     if excluded_count != report.get("excluded_source_path_count"):
         raise ValueError("Source exclusion count does not match the build evidence.")
-
-    artifacts_root = Path(artifact_path).expanduser()
-    if artifacts_root.is_symlink():
-        raise ValueError("Artifact directory must not be a symlink.")
-    artifacts_root = artifacts_root.resolve(strict=True)
-    if not artifacts_root.is_dir():
-        raise ValueError("Artifact path must be an existing directory.")
-    if artifacts_root == root or artifacts_root in root.parents or root in artifacts_root.parents:
-        raise ValueError("Artifact directory must be separate from the source repository.")
 
     artifact_inventory, artifact_inventory_sha256 = create_artifact_inventory(artifacts_root)
     if artifact_inventory != report.get("artifact_inventory"):
