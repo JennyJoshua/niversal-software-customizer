@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 
 import pytest
-from pathlib import Path
 
 from customizer.build_evidence import inspect_git_source
 from customizer.build_runner import _stage_source_snapshot
