@@ -44,7 +44,7 @@ def _unified_diff(relative: str, original: bytes | None, updated: bytes) -> tupl
         new_lines,
         fromfile=f"a/{relative}" if original is not None else "/dev/null",
         tofile=f"b/{relative}",
-        lineterm="\\n",
+        lineterm="\n",
     ))
     if len(diff.encode("utf-8")) > 200_000:
         return None, "omitted_size_limit"
