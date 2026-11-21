@@ -52,7 +52,7 @@
 - [x] Support only explicitly detected, USC-marked Next.js App Router branding locations.
 - [x] Implement product name, logo/favicon, and theme changes in the guarded Next.js adapter.
 - [x] Keep licence/notice files outside the adapter write allowlist and test that they remain byte-for-byte unchanged.
-- [ ] Generate diff and change report.
+- [x] Generate deterministic unified diffs for UTF-8 text changes and an explicit binary/size-limit marker; return a per-file application change report.
 - [x] Test unrelated files, the MIT licence, NOTICE, and USC upstream-baseline metadata remain unchanged.
 - [ ] Test that later upstream updates preserve branding changes or stop on conflicts.
 

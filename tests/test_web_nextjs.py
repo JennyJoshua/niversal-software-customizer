@@ -290,3 +290,35 @@ def test_apply_rejects_a_plan_that_no_longer_matches_current_configuration(tmp_p
 
     assert report["status"] == "blocked_unsafe_or_unsupported"
     assert snapshot(source) == before
+
+
+def test_plan_includes_deterministic_text_diffs_and_binary_asset_markers(tmp_path):
+    source, project, branding = project_fixture(tmp_path)
+
+    first = create_nextjs_branding_plan(source, project, branding)
+    second = create_nextjs_branding_plan(source, project, branding)
+
+    assert first == second
+    changes = {item["path"]: item for item in first["planned_changes"]}
+    layout_diff = changes["app/layout.tsx"]["diff"]
+    assert changes["app/layout.tsx"]["diff_format"] == "text"
+    assert "--- a/app/layout.tsx" in layout_diff
+    assert "+++ b/app/layout.tsx" in layout_diff
+    assert '+  title: "My PNG Product",' in layout_diff
+    assert changes["public/usc-brand-logo.svg"]["diff_format"] == "text"
+    assert changes["public/usc-brand-favicon.ico"]["diff"] is None
+    assert changes["public/usc-brand-favicon.ico"]["diff_format"] == "binary"
+
+
+def test_apply_returns_the_reviewed_change_report(tmp_path):
+    source, project, branding = project_fixture(tmp_path)
+
+    reviewed_plan = create_nextjs_branding_plan(source, project, branding)
+    result = apply_nextjs_branding(
+        source, project, branding, approved=True, expected_plan=reviewed_plan,
+    )
+
+    assert result["status"] == "applied"
+    assert len(result["change_report"]) == len(reviewed_plan["planned_changes"])
+    assert all(item["status"] == "applied" for item in result["change_report"])
+    assert {item["path"] for item in result["change_report"]} == set(reviewed_plan["write_allowlist"])
